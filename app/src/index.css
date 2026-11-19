@@ -522,3 +522,4 @@ h2.inline-icon, .inline-icon { display: inline-flex; align-items: center; gap: 8
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
 .sheet-section { font-size: .78rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin-top: 6px; }
 .aisle-title { font-family: var(--font-body); font-weight: 700; letter-spacing: .06em; }
+.wadd.more { min-height: 28px; border-style: dotted; opacity: .7; }

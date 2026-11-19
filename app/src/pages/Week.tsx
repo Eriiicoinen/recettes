@@ -161,8 +161,10 @@ export default function Week() {
           !(moving.day === day && moving.meal === meal) && (
             <button className="wadd drop" onClick={() => dropTo({ day, meal })} aria-label={`Mettre au ${label}`}>Ici</button>
           )
-        ) : list.length === 0 && (
-          <button className="wadd" onClick={() => setPicker({ day, meal })} aria-label={`Ajouter au ${label}`}><Plus size={18} /></button>
+        ) : (
+          // Toujours possible d'ajouter : entrée + plat, plat + dessert…
+          <button className={list.length ? 'wadd more' : 'wadd'} onClick={() => setPicker({ day, meal })}
+            aria-label={list.length ? `Ajouter un autre plat au ${label}` : `Ajouter au ${label}`}><Plus size={list.length ? 14 : 18} /></button>
         )}
       </div>
     )
