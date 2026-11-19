@@ -1,3 +1,4 @@
+import { CookingPot } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
 
@@ -31,7 +32,7 @@ export default function Login() {
 
   return (
     <main className="center-page">
-      <div className="brand-mark" aria-hidden>🍲</div>
+      <div className="brand-mark" aria-hidden><CookingPot size={38} strokeWidth={1.8} /></div>
       <h1>Recettes &amp; Menus</h1>
       <div className="segmented" role="tablist">
         <button role="tab" aria-selected={mode === 'signin'} onClick={() => setMode('signin')}>Se connecter</button>

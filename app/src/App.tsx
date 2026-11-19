@@ -1,3 +1,4 @@
+import { BookOpen, CalendarDays, Settings as SettingsIcon, ShoppingCart } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { HashRouter, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom'
 import { SessionProvider, useSession } from './lib/session'
@@ -13,10 +14,10 @@ import Shopping from './pages/Shopping'
 import Week from './pages/Week'
 
 const TABS = [
-  { to: '/recettes', label: 'Recettes', icon: '📖' },
-  { to: '/semaine', label: 'Semaine', icon: '📅' },
-  { to: '/courses', label: 'Courses', icon: '🛒' },
-  { to: '/reglages', label: 'Réglages', icon: '⚙️' },
+  { to: '/recettes', label: 'Recettes', icon: BookOpen },
+  { to: '/semaine', label: 'Semaine', icon: CalendarDays },
+  { to: '/courses', label: 'Courses', icon: ShoppingCart },
+  { to: '/reglages', label: 'Réglages', icon: SettingsIcon },
 ]
 
 /** Lien ou texte reçu via le menu Partager (?url=, ?text=) ou un Raccourci iPhone (?import=). */
@@ -71,7 +72,7 @@ function Shell() {
       <nav className="tabbar">
         {TABS.map((t) => (
           <NavLink key={t.to} to={t.to} className={({ isActive }) => (isActive ? 'tab active' : 'tab')}>
-            <span className="tab-icon" aria-hidden>{t.icon}</span>
+            <span className="tab-icon"><t.icon size={22} strokeWidth={2} /></span>
             <span>{t.label}</span>
           </NavLink>
         ))}

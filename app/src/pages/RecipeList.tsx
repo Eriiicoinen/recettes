@@ -1,3 +1,5 @@
+import { Heart, Lightbulb, Plus, Search, X } from 'lucide-react'
+import { CategoryIcon, tintOf } from '../components/CategoryIcon'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import ReviewPrompt from '../components/ReviewPrompt'
@@ -10,11 +12,11 @@ import { useRealtime } from '../lib/realtime'
 
 type Chip = 'favoris' | 'saison' | 'rapide' | 'oubliees' | 'simples'
 const CHIPS: { id: Chip; label: string }[] = [
-  { id: 'favoris', label: '♥ Favoris' },
+  { id: 'favoris', label: 'Favoris' },
   { id: 'saison', label: `De saison (${currentSeason()})` },
   { id: 'rapide', label: '< 30 min' },
   { id: 'oubliees', label: 'Pas faites depuis longtemps' },
-  { id: 'simples', label: '🧺 Sans recette' },
+  { id: 'simples', label: 'Sans recette' },
 ]
 
 export default function RecipeList() {
@@ -91,16 +93,17 @@ export default function RecipeList() {
     <section className="page">
       <div className="row between">
         <h1 style={{ margin: 0 }}>Recettes</h1>
-        <Link to="/recettes/nouvelle" className="btn primary">+ Ajouter</Link>
+        <Link to="/recettes/nouvelle" className="btn primary"><Plus size={18} /> Ajouter</Link>
       </div>
 
       {household && !query && <ReviewPrompt householdId={household.id} />}
-      {!query && <Link to="/idees" className="btn">🤔 Que faire avec ce que j'ai ?</Link>}
+      {!query && <Link to="/idees" className="btn soft"><Lightbulb size={18} /> Que faire avec ce que j'ai ?</Link>}
 
       <div className="search">
         <input type="search" value={query} onChange={(e) => setQuery(e.target.value)}
           placeholder="Nom, ingrédient, tag…" aria-label="Rechercher une recette" enterKeyHint="search" />
-        {query && <button className="search-clear" onClick={() => setQuery('')} aria-label="Effacer">×</button>}
+        <Search size={18} className="search-icon" aria-hidden />
+        {query && <button className="search-clear" onClick={() => setQuery('')} aria-label="Effacer"><X size={18} /></button>}
       </div>
 
       <div className="chips" role="group" aria-label="Filtres">
@@ -127,22 +130,24 @@ export default function RecipeList() {
       ) : (
         <>
           <p className="muted small" style={{ margin: 0 }}>{filtered.length} recette{filtered.length > 1 ? 's' : ''}</p>
-          <ul className="recipe-list">
+          <ul className="recipe-grid">
             {filtered.map((r) => {
               const total = (r.prep_minutes ?? 0) + (r.cook_minutes ?? 0)
               const s = stats.get(r.id)
               return (
                 <li key={r.id}>
-                  <Link to={`/recettes/${r.id}`} className="recipe-card">
-                    {r.photo_url ? <img className="thumb" src={r.photo_url} alt="" loading="lazy" />
-                      : <span className="thumb empty" aria-hidden>{r.is_simple ? '🧺' : '🍽'}</span>}
-                    <div className="recipe-card-main">
-                      <div className="recipe-name">{r.is_favorite && <span className="fav" aria-label="Favori">♥ </span>}{r.name}</div>
-                      <div className="muted small">
-                        {[r.is_simple ? '🧺 Sans recette' : r.category, total ? formatDuration(total) : null, r.rating ? '★'.repeat(r.rating) : null].filter(Boolean).join(' · ')}
-                      </div>
+                  <Link to={`/recettes/${r.id}`} className="recipe-tile">
+                    <div className={`tile-img ${tintOf(r)}`}>
+                      {r.photo_url ? <img src={r.photo_url} alt="" loading="lazy" /> : <CategoryIcon recipe={r} size={36} strokeWidth={1.5} />}
+                      {r.is_favorite && <span className="tile-fav" aria-label="Favori"><Heart size={14} fill="currentColor" /></span>}
                     </div>
-                    <div className="muted small recipe-last">{relativeDate(s?.last_cooked ?? null)}</div>
+                    <div className="tile-body">
+                      <div className="tile-name">{r.name}</div>
+                      <div className="muted small">
+                        {[r.is_simple ? 'Sans recette' : r.category, total ? formatDuration(total) : null, r.rating ? '★'.repeat(r.rating) : null].filter(Boolean).join(' · ')}
+                      </div>
+                      {s?.last_cooked && <div className="muted small">{relativeDate(s.last_cooked)}</div>}
+                    </div>
                   </Link>
                 </li>
               )

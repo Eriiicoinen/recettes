@@ -1,3 +1,4 @@
+import { Utensils } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { yieldLabel, type Recipe } from '../../lib/recipes'
 import { dayLabel, defaultServings, type WeekItem } from '../../lib/week'
@@ -33,9 +34,9 @@ export default function ItemSheet({ item, name, recipe, people, hasLeftovers, on
           </div>
         )}
         {forPeople && item.day && !hasLeftovers && (
-          <button className="btn" onClick={onLeftovers}>🍱 Cuisiner ×2 pour les restes ({item.meal === 'soir' ? 'midi du lendemain' : 'le soir'})</button>
+          <button className="btn" onClick={onLeftovers}><Utensils size={18} /> Cuisiner ×2 pour les restes ({item.meal === 'soir' ? 'midi du lendemain' : 'le soir'})</button>
         )}
-        {hasLeftovers && <p className="muted small" style={{ margin: 0 }}>🍱 Cuisiné en double : les restes sont prévus au repas suivant.</p>}
+        {hasLeftovers && <p className="muted small" style={{ margin: 0 }}>Cuisiné en double : les restes sont prévus au repas suivant.</p>}
         {item.leftover_of && <p className="muted small" style={{ margin: 0 }}>Retirer ces restes remet le plat d'origine en quantité simple.</p>}
         {recipe && <Link className="btn" to={`/recettes/${recipe.id}`}>Ouvrir la recette</Link>}
         <button className="btn" onClick={onMove}>{item.day ? 'Déplacer…' : 'Placer dans un créneau…'}</button>

@@ -1,3 +1,4 @@
+import { Bell, Check } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { disablePush, enablePush, pushState, testPush, type PushState } from '../lib/push'
 
@@ -19,7 +20,7 @@ export default function NotificationsCard({ householdId, userId }: { householdId
 
   return (
     <div className="card stack">
-      <h2>🔔 Rappel du dimanche</h2>
+      <h2 className="inline-icon"><Bell size={20} /> Rappel du dimanche</h2>
       <p className="muted small" style={{ margin: 0 }}>
         Le dimanche soir, une notification si le menu de la semaine suivante est vide ou presque. À activer sur chaque téléphone.
       </p>
@@ -32,7 +33,7 @@ export default function NotificationsCard({ householdId, userId }: { householdId
           <p className="small" style={{ margin: 0 }}>Notifications bloquées pour cette app : autorise-les dans les réglages du téléphone.</p>
         ) : state === 'on' ? (
           <div className="row wrap" style={{ gap: 6 }}>
-            <span className="ok">✓ Activé sur ce téléphone</span>
+            <span className="ok inline-icon"><Check size={18} /> Activé sur ce téléphone</span>
             <button className="btn small-btn" disabled={busy} onClick={() => act(testPush, 'Notification de test envoyée.')}>Tester</button>
             <button className="btn ghost small-btn" disabled={busy} onClick={() => act(disablePush, 'Désactivé.')}>Désactiver</button>
           </div>

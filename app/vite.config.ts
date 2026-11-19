@@ -42,6 +42,8 @@ export default defineConfig({
         navigateFallback: `${base}index.html`,
         // Réception des notifications (rappel du dimanche)
         importScripts: ['push-sw.js'],
+        // Police des titres disponible hors ligne (latin et latin étendu suffisent pour le français)
+        globPatterns: ['**/*.{js,css,html,svg,png,ico}', '**/fraunces-latin-*.woff2'],
       },
     }),
   ],

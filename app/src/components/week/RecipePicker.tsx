@@ -1,3 +1,4 @@
+import { Ban, Repeat, Sandwich, ShoppingBasket, Utensils } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createSimpleMeal } from '../../lib/meals'
 import { getRecipe, listAisles, listRecipes, norm, type Recipe } from '../../lib/recipes'
@@ -6,7 +7,7 @@ import type { WeekItem } from '../../lib/week'
 import Sheet from '../Sheet'
 
 /** Choix de ce qu'on mange dans un créneau : recette du carnet, du panier, repas sans recette ou texte libre. */
-const QUICK = [['🚫', 'Absents'], ['🍽', 'Resto'], ['🥡', 'Restes'], ['🥪', 'Sur le pouce']] as const
+const QUICK = [[Ban, 'Absents'], [Utensils, 'Resto'], [Repeat, 'Restes'], [Sandwich, 'Sur le pouce']] as const
 
 export default function RecipePicker({ title, householdId, people, basket, basketName, onPickRecipe, onPickBasket, onFreeText, onClose }: {
   title: string; householdId: string; people: number; basket: WeekItem[]; basketName: (i: WeekItem) => string
@@ -57,7 +58,7 @@ export default function RecipePicker({ title, householdId, people, basket, baske
               placeholder={'800 g de fromage à raclette\n1 kg de pommes de terre\n400 g de charcuterie\nCornichons'} />
           </label>
           <p className="muted small" style={{ margin: 0 }}>
-            Gardé dans ton carnet (filtre « 🧺 Sans recette ») pour la prochaine fois. Les quantités s'adaptent aux invités.
+            Gardé dans ton carnet (filtre « Sans recette ») pour la prochaine fois. Les quantités s'adaptent aux invités.
           </p>
           {simpleError && <p className="error" style={{ margin: 0 }}>{simpleError}</p>}
           <div className="row between">
@@ -96,10 +97,10 @@ export default function RecipePicker({ title, householdId, people, basket, baske
             </button>
           ))}
         </div>
-        <button className="btn" onClick={() => setSimple({ name: q.trim(), lines: '' })}>🧺 Repas sans recette (raclette, fondue…)</button>
+        <button className="btn" onClick={() => setSimple({ name: q.trim(), lines: '' })}><ShoppingBasket size={18} /> Repas sans recette (raclette, fondue…)</button>
         <div className="row wrap" style={{ gap: 6 }}>
-          {QUICK.map(([icon, label]) => (
-            <button key={label} className="chip" onClick={() => onFreeText(label)}>{icon} {label}</button>
+          {QUICK.map(([Icon, label]) => (
+            <button key={label} className="chip inline-icon" onClick={() => onFreeText(label)}><Icon size={16} /> {label}</button>
           ))}
         </div>
         <form className="row" onSubmit={(e) => { e.preventDefault(); if (free.trim()) onFreeText(free.trim()) }}>

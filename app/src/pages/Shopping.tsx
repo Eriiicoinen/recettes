@@ -1,3 +1,4 @@
+import { Check, ChevronLeft, ChevronRight, Ellipsis, Repeat, Share2, TriangleAlert } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import Sheet from '../components/Sheet'
@@ -265,32 +266,32 @@ export default function Shopping() {
   const row = (i: ShoppingItem) => (
     <li key={i.id} className={i.checked ? 'shop-row done' : 'shop-row'}>
       <button className="shop-check" onClick={() => toggle(i)} aria-pressed={i.checked}>
-        <span className="box" aria-hidden>{i.checked ? '✓' : ''}</span>
+        <span className="box" aria-hidden>{i.checked && <Check size={18} strokeWidth={3} />}</span>
         <span className="shop-main">
-          <span className="shop-label">{i.label}{i.origin === 'recurring' && <span className="muted small" aria-label="chaque semaine"> 🔁</span>}</span>
+          <span className="shop-label">{i.label}{i.origin === 'recurring' && <Repeat size={14} className="muted recurring-mark" aria-label="chaque semaine" />}</span>
           {amounts(i).main && <span className="shop-qty">{amounts(i).main}</span>}
           {amounts(i).detail && <span className="muted small">({amounts(i).detail})</span>}
           {i.checked && i.checked_by && i.checked_by !== me?.user_id && <span className="muted small"> · {memberName(i.checked_by)}</span>}
         </span>
       </button>
-      <button className="btn ghost icon shop-more" onClick={() => setSelected(i)} aria-label={`Options pour ${i.label}`}>⋯</button>
+      <button className="btn ghost icon shop-more" onClick={() => setSelected(i)} aria-label={`Options pour ${i.label}`}><Ellipsis size={20} /></button>
     </li>
   )
 
   return (
     <section className="page">
       <div className="week-nav">
-        <button className="btn ghost icon" onClick={() => goWeek(addDays(week, -7))} aria-label="Semaine précédente">‹</button>
+        <button className="btn ghost icon" onClick={() => goWeek(addDays(week, -7))} aria-label="Semaine précédente"><ChevronLeft size={24} /></button>
         <div className="week-title">
           <h1>Courses</h1>
           <div className="muted small">{relativeWeek(week)} · {weekLabel(week)}</div>
         </div>
-        <button className="btn ghost icon" onClick={() => goWeek(addDays(week, 7))} aria-label="Semaine suivante">›</button>
+        <button className="btn ghost icon" onClick={() => goWeek(addDays(week, 7))} aria-label="Semaine suivante"><ChevronRight size={24} /></button>
       </div>
 
       {remaining > 0 && (
         <div className="row between">
-          <button className="btn small-btn" onClick={shareList}>📤 Partager la liste</button>
+          <button className="btn small-btn" onClick={shareList}><Share2 size={16} /> Partager la liste</button>
           {shared && <span className="muted small" role="status">{shared}</span>}
         </div>
       )}
@@ -303,7 +304,7 @@ export default function Shopping() {
       )}
       {error && <p className="error">{error}</p>}
       {missing.length > 0 && (
-        <p className="warn small">⚠️ Sans ingrédients saisis, donc absentes de la liste : {missing.join(', ')}.</p>
+        <p className="warn small inline-icon"><TriangleAlert size={16} /> Sans ingrédients saisis, donc absentes de la liste : {missing.join(', ')}.</p>
       )}
 
       <form className="row" onSubmit={addManual}>
@@ -319,7 +320,7 @@ export default function Shopping() {
         </div>
       ) : (
         <>
-          {remaining === 0 && done.length > 0 && <div className="empty">🎉 Tout est dans le chariot.</div>}
+          {remaining === 0 && done.length > 0 && <div className="empty">Tout est dans le chariot. Bonnes courses !</div>}
           {groups.map((g) => (
             <div key={g.name} className="aisle">
               <h2 className="aisle-title">{g.name} <span className="muted small">{g.list.length}</span></h2>
@@ -329,14 +330,14 @@ export default function Shopping() {
 
           {staples.length > 0 && (
             <details className="aisle collapsible">
-              <summary><h2 className="aisle-title">🧂 Placard, à vérifier <span className="muted small">{staples.length}</span></h2></summary>
+              <summary><h2 className="aisle-title">Placard, à vérifier <span className="muted small">{staples.length}</span></h2></summary>
               <ul className="shop-list">{staples.map(row)}</ul>
             </details>
           )}
 
           {done.length > 0 && (
             <details className="aisle collapsible">
-              <summary><h2 className="aisle-title">✓ Dans le chariot <span className="muted small">{done.length}</span></h2></summary>
+              <summary><h2 className="aisle-title">Dans le chariot <span className="muted small">{done.length}</span></h2></summary>
               <ul className="shop-list">{done.map(row)}</ul>
             </details>
           )}
@@ -358,7 +359,7 @@ export default function Shopping() {
       )}
 
       <button className="btn ghost small-btn" style={{ alignSelf: 'center' }} onClick={() => setShowRecurring(true)}>
-        🔁 Articles de chaque semaine{recurring.length ? ` (${recurring.length})` : ''}
+        <Repeat size={16} /> Articles de chaque semaine{recurring.length ? ` (${recurring.length})` : ''}
       </button>
 
       {showRecurring && household && (
@@ -383,7 +384,7 @@ export default function Shopping() {
             )}
             {selected.sources.length > 0 && <p className="muted small" style={{ margin: 0 }}>Pour : {selected.sources.join(', ')}</p>}
             {selected.origin === 'manual' && <p className="muted small" style={{ margin: 0 }}>Ajouté à la main</p>}
-            {selected.origin === 'recurring' && <p className="muted small" style={{ margin: 0 }}>🔁 Ajouté chaque semaine</p>}
+            {selected.origin === 'recurring' && <p className="muted small inline-icon" style={{ margin: 0 }}><Repeat size={14} /> Ajouté chaque semaine</p>}
             <label className="field">
               <span>Rayon</span>
               <select value={selected.aisle_id ?? ''} onChange={(e) => void setAisle(selected, e.target.value || null)}>
@@ -405,7 +406,7 @@ export default function Shopping() {
               </label>
             )}
             {selected.origin === 'manual' && (
-              <button className="btn" onClick={() => void makeRecurring(selected)}>🔁 En acheter chaque semaine</button>
+              <button className="btn" onClick={() => void makeRecurring(selected)}><Repeat size={16} /> En acheter chaque semaine</button>
             )}
             {selected.origin === 'recurring' && selected.recurring_id && (
               <button className="btn" onClick={() => void stopRecurring(selected.recurring_id!)}>Ne plus l'ajouter chaque semaine</button>

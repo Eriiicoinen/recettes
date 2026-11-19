@@ -1,3 +1,4 @@
+import { ArrowLeft, BookOpen, Check, Plus, Sparkles } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { askClaude, ideaText, matchBook, type BookMatch, type Idea } from '../lib/ideas'
@@ -51,7 +52,7 @@ export default function Ideas() {
   return (
     <section className="page">
       <div className="row between">
-        <button className="btn ghost back" onClick={() => navigate(-1)}>← Retour</button>
+        <button className="btn ghost back" onClick={() => navigate(-1)}><ArrowLeft size={18} /> Retour</button>
       </div>
       <h1 style={{ margin: 0 }}>Que faire avec ce que j'ai ?</h1>
       <p className="muted small" style={{ margin: 0 }}>Ce qui reste dans le frigo ou les placards. Sel, huile et épices sont supposés acquis.</p>
@@ -74,7 +75,7 @@ export default function Ideas() {
 
       {book && (
         <div className="card stack">
-          <h2>📖 Dans ton carnet</h2>
+          <h2 className="inline-icon"><BookOpen size={20} /> Dans ton carnet</h2>
           {book.length === 0 ? <p className="muted small" style={{ margin: 0 }}>Aucune recette avec ces ingrédients.</p> : (
             <ul className="plain stack" style={{ gap: 10 }}>
               {book.map((m) => (
@@ -83,7 +84,7 @@ export default function Ideas() {
                   <div className="muted small">
                     {[`utilise ${m.matched.join(', ')}`, m.minutes ? formatDuration(m.minutes) : null].filter(Boolean).join(' · ')}
                   </div>
-                  <div className="small">{m.missing.length ? <>À acheter : {m.missing.join(', ')}</> : <span className="ok">✓ Rien à acheter</span>}</div>
+                  <div className="small">{m.missing.length ? <>À acheter : {m.missing.join(', ')}</> : <span className="ok inline-icon"><Check size={16} /> Rien à acheter</span>}</div>
                 </li>
               ))}
             </ul>
@@ -92,12 +93,12 @@ export default function Ideas() {
       )}
 
       {have.length > 0 && !ideas && (
-        <button className="btn" onClick={ask} disabled={asking}>{asking ? 'Claude réfléchit… (10 à 20 s)' : '✨ Idées de Claude'}</button>
+        <button className="btn" onClick={ask} disabled={asking}>{asking ? 'Claude réfléchit… (10 à 20 s)' : <><Sparkles size={18} /> Idées de Claude</>}</button>
       )}
       {ideas && (
         <div className="card stack">
           <div className="row between">
-            <h2>✨ Idées de Claude</h2>
+            <h2 className="inline-icon"><Sparkles size={20} /> Idées de Claude</h2>
             <button className="btn ghost small-btn" onClick={ask} disabled={asking}>{asking ? '…' : 'Autres idées'}</button>
           </div>
           {ideas.map((i, n) => (
@@ -105,7 +106,7 @@ export default function Ideas() {
               <button className="idea-head" onClick={() => setOpen(open === n ? null : n)} aria-expanded={open === n}>
                 <strong>{i.name}</strong>
                 <span className="muted small">{i.pitch} · {formatDuration(i.minutes)}</span>
-                <span className="small">{i.missing.length ? `À acheter : ${i.missing.join(', ')}` : '✓ Rien à acheter'}</span>
+                <span className="small">{i.missing.length ? `À acheter : ${i.missing.join(', ')}` : 'Rien à acheter'}</span>
               </button>
               {open === n && (
                 <div className="stack" style={{ gap: 6 }}>
@@ -113,7 +114,7 @@ export default function Ideas() {
                   <ol className="small" style={{ margin: 0 }}>{i.steps.map((s) => <li key={s}>{s}</li>)}</ol>
                   <button className="btn small-btn primary"
                     onClick={() => navigate(`/recettes/nouvelle?import=${encodeURIComponent(ideaText(i))}`)}>
-                    ➕ Garder dans mon carnet
+                    <Plus size={18} /> Garder dans mon carnet
                   </button>
                 </div>
               )}

@@ -62,7 +62,7 @@ export default function ConnectorCard({ householdId }: { householdId: string }) 
           <textarea readOnly rows={3} value={newUrl} onFocus={(e) => e.target.select()} className="mono" />
           <button className="btn primary" onClick={copy}>{copied ? 'Copié ✓' : 'Copier le lien'}</button>
           <p className="small" style={{ margin: 0 }}>
-            ⚠️ Il ne sera plus affiché. Garde-le pour toi : il donne accès au carnet.
+            Il ne sera plus affiché. Garde-le pour toi : il donne accès au carnet.
           </p>
           <ol className="small connector-steps">
             <li>Sur ordinateur, ouvre <strong>claude.ai</strong> → <strong>Paramètres → Connecteurs</strong>.</li>

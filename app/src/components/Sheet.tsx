@@ -1,3 +1,4 @@
+import { X } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
 
 /** Panneau qui monte du bas de l'écran. Fermeture : fond, bouton ×, touche Échap. */
@@ -15,7 +16,7 @@ export default function Sheet({ title, onClose, children }: { title: string; onC
       <div className="sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className="sheet-head">
           <h2>{title}</h2>
-          <button className="btn ghost icon" onClick={onClose} aria-label="Fermer">×</button>
+          <button className="btn ghost icon" onClick={onClose} aria-label="Fermer"><X size={22} /></button>
         </div>
         <div className="sheet-body">{children}</div>
       </div>

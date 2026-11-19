@@ -1,3 +1,4 @@
+import { BookOpen, Camera, ShoppingBasket, Sparkles, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { guessAisle } from '../lib/aisleGuess'
@@ -188,14 +189,14 @@ export default function RecipeEdit() {
 
       {!id && !imported && (
         <div className="card stack import-card">
-          <h2>✨ Importer</h2>
+          <h2 className="inline-icon"><Sparkles size={20} /> Importer</h2>
           <textarea rows={3} value={importInput} onChange={(e) => setImportInput(e.target.value)} disabled={importing}
             placeholder="Colle le lien d'une recette (Marmiton, 750g, un blog…) ou le texte complet d'une recette" />
           <button type="button" className="btn primary" onClick={() => runImport()} disabled={importing || !importInput.trim()}>
             {importing ? 'Lecture de la recette…' : 'Importer'}
           </button>
           <label className={importing ? 'btn disabled' : 'btn'} aria-disabled={importing}>
-            📷 Depuis une photo (livre, fiche…)
+            <Camera size={18} /> Depuis une photo (livre, fiche…)
             <input type="file" accept="image/*" multiple hidden disabled={importing}
               onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ''; void runImport(f) }} />
           </label>
@@ -209,7 +210,7 @@ export default function RecipeEdit() {
           <strong>Recette importée.</strong> Vérifie la fiche, puis touche <strong>Enregistrer</strong>.
           {duplicate && (
             <p style={{ margin: '8px 0 0' }}>
-              ⚠️ Tu as déjà cette recette : <Link to={`/recettes/${duplicate.id}`}>{duplicate.name}</Link>
+              Tu as déjà cette recette : <Link to={`/recettes/${duplicate.id}`}>{duplicate.name}</Link>
             </p>
           )}
         </div>
@@ -217,10 +218,10 @@ export default function RecipeEdit() {
 
       <div className="segmented" role="group" aria-label="Type">
         <button type="button" className={!draft.is_simple ? 'active' : ''} aria-pressed={!draft.is_simple} onClick={() => set('is_simple', false)}>
-          📖 Recette
+          <BookOpen size={16} /> Recette
         </button>
         <button type="button" className={draft.is_simple ? 'active' : ''} aria-pressed={draft.is_simple} onClick={() => set('is_simple', true)}>
-          🧺 Repas sans recette
+          <ShoppingBasket size={16} /> Repas sans recette
         </button>
       </div>
       {draft.is_simple && (
@@ -242,7 +243,7 @@ export default function RecipeEdit() {
             <img className="thumb big" src={photo && photo !== 'remove' ? photo.preview : draft.photo_url!} alt="" />
           )}
           <label className="btn small-btn">
-            📷 {draft.photo_url || (photo && photo !== 'remove') ? 'Changer' : 'Choisir'}
+            <Camera size={16} /> {draft.photo_url || (photo && photo !== 'remove') ? 'Changer' : 'Choisir'}
             <input type="file" accept="image/*" hidden onChange={(e) => {
               const f = e.target.files?.[0]
               e.target.value = ''
@@ -342,7 +343,7 @@ export default function RecipeEdit() {
                   <input className="ing-name" list="ing-names" placeholder="Ingrédient, précision" aria-label="Ingrédient"
                     value={r.name} onChange={(e) => updateRow(r.key, { name: e.target.value })} />
                   {r.name.trim() ? (
-                    <button type="button" className="btn ghost icon" aria-label="Retirer" onClick={() => removeRow(r.key)}>×</button>
+                    <button type="button" className="btn ghost icon" aria-label="Retirer" onClick={() => removeRow(r.key)}><X size={18} /></button>
                   ) : <span className="icon-spacer" />}
                 </div>
                 {isNew && (

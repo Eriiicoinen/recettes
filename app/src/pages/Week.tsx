@@ -1,3 +1,4 @@
+import { ChevronLeft, ChevronRight, Copy, Lightbulb, Sparkles } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import ReviewPrompt from '../components/ReviewPrompt'
@@ -124,12 +125,12 @@ export default function Week() {
   return (
     <section className="page">
       <div className="week-nav">
-        <button className="btn ghost icon" onClick={() => goWeek(addDays(start, -7))} aria-label="Semaine précédente">‹</button>
+        <button className="btn ghost icon" onClick={() => goWeek(addDays(start, -7))} aria-label="Semaine précédente"><ChevronLeft size={24} /></button>
         <div className="week-title">
           <h1>{relativeWeek(start)}</h1>
           <div className="muted small">{weekLabel(start)}</div>
         </div>
-        <button className="btn ghost icon" onClick={() => goWeek(addDays(start, 7))} aria-label="Semaine suivante">›</button>
+        <button className="btn ghost icon" onClick={() => goWeek(addDays(start, 7))} aria-label="Semaine suivante"><ChevronRight size={24} /></button>
       </div>
       {start !== mondayOf(today) && (
         <button className="btn ghost small-btn" style={{ alignSelf: 'center' }} onClick={() => goWeek(mondayOf(today))}>Revenir à cette semaine</button>
@@ -148,8 +149,8 @@ export default function Week() {
         <>
           {!moving && addDays(start, 6) >= today && (
             <div className="grid-2">
-              <button className="btn primary" onClick={() => setFilling(true)}>✨ Remplir ma semaine</button>
-              <button className="btn" onClick={() => setCopying(true)}>📋 Reprendre une semaine</button>
+              <button className="btn primary" onClick={() => setFilling(true)}><Sparkles size={18} /> Remplir ma semaine</button>
+              <button className="btn" onClick={() => setCopying(true)}><Copy size={18} /> Reprendre une semaine</button>
             </div>
           )}
           {copied && <p className="muted small" role="status" style={{ margin: 0 }}>{copied}</p>}
@@ -201,7 +202,7 @@ export default function Week() {
           {!moving && ideas.length > 0 && (
             <div className="card stack">
               <div className="row between">
-                <h2>💡 Idées</h2>
+                <h2 className="inline-icon"><Lightbulb size={20} /> Idées</h2>
                 <button className="btn ghost small-btn" onClick={() => setIdeasSeed((n) => n + 1)}>Autres idées</button>
               </div>
               <p className="muted small" style={{ margin: 0 }}>De saison, pas cuisinées depuis un mois.</p>

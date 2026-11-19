@@ -1,3 +1,4 @@
+import { AlarmClock, ArrowLeft, CalendarPlus, Camera, ChefHat, Heart, Pencil, Share2, Timer, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
@@ -137,13 +138,13 @@ export default function RecipeDetail() {
   return (
     <section className={cooking ? 'page cooking' : 'page'}>
       <div className="row between">
-        <button className="btn ghost back" onClick={() => navigate(-1)}>← Retour</button>
+        <button className="btn ghost back" onClick={() => navigate(-1)}><ArrowLeft size={18} /> Retour</button>
         <div className="row" style={{ gap: 4 }}>
           <button className="btn ghost icon" aria-pressed={recipe.is_favorite} aria-label="Favori"
             onClick={() => setFavorite(recipe.id, !recipe.is_favorite).then(() => setRecipe({ ...recipe, is_favorite: !recipe.is_favorite }))}>
-            <span className={recipe.is_favorite ? 'fav' : 'muted'}>{recipe.is_favorite ? '♥' : '♡'}</span>
+            <Heart size={22} className={recipe.is_favorite ? 'fav' : 'muted'} fill={recipe.is_favorite ? 'currentColor' : 'none'} />
           </button>
-          <Link className="btn ghost" to={`/recettes/${recipe.id}/modifier`}>Modifier</Link>
+          <Link className="btn ghost" to={`/recettes/${recipe.id}/modifier`}><Pencil size={16} /> Modifier</Link>
         </div>
       </div>
 
@@ -152,7 +153,7 @@ export default function RecipeDetail() {
       <header className="stack" style={{ gap: 6 }}>
         <h1 style={{ margin: 0 }}>{recipe.name}</h1>
         <div className="muted small">
-          {[recipe.is_simple ? '🧺 Repas sans recette' : recipe.category, recipe.seasons.length ? recipe.seasons.join(', ') : "Toute l'année",
+          {[recipe.is_simple ? 'Repas sans recette' : recipe.category, recipe.seasons.length ? recipe.seasons.join(', ') : "Toute l'année",
             recipe.rating ? '★'.repeat(recipe.rating) : null].filter(Boolean).join(' · ')}
         </div>
         <div className="row wrap small">
@@ -165,18 +166,18 @@ export default function RecipeDetail() {
       </header>
 
       <div className="grid-2">
-        <button className="btn primary" onClick={openPlan}>📅 Ajouter à la semaine</button>
+        <button className="btn primary" onClick={openPlan}><CalendarPlus size={18} /> Ajouter à la semaine</button>
         {!(recipe.is_simple && recipe.steps.length === 0) && (
           <button className="btn" onClick={() => setCooking(!cooking)}>
-            {cooking ? 'Quitter le mode cuisine' : '🍳 Mode cuisine'}
+            {cooking ? 'Quitter le mode cuisine' : <><ChefHat size={18} /> Mode cuisine</>}
           </button>
         )}
       </div>
       {!cooking && (
         <div className="row wrap" style={{ gap: 6 }}>
-          <button className="btn small-btn" onClick={share}>📤 Partager</button>
+          <button className="btn small-btn" onClick={share}><Share2 size={16} /> Partager</button>
           <label className={photoBusy ? 'btn small-btn disabled' : 'btn small-btn'}>
-            {photoBusy ? 'Envoi…' : recipe.photo_url ? '📷 Changer la photo' : '📷 Ajouter une photo'}
+            <Camera size={16} /> {photoBusy ? 'Envoi…' : recipe.photo_url ? 'Changer la photo' : 'Ajouter une photo'}
             <input type="file" accept="image/*" hidden disabled={photoBusy}
               onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; void changePhoto(f) }} />
           </label>
@@ -237,7 +238,7 @@ export default function RecipeDetail() {
                   {findDurations(s).map((d) => (
                     <button key={d.seconds} className="timer-chip" aria-label={`Minuteur ${d.label}`}
                       onClick={(e) => { e.stopPropagation(); setCooking(true); startTimer(`Étape ${i + 1} · ${d.label}`, d.seconds) }}>
-                      ⏱ {d.label}
+                      <Timer size={14} /> {d.label}
                     </button>
                   ))}
                 </span>
@@ -263,8 +264,8 @@ export default function RecipeDetail() {
           {timers.map((t) => (
             <div key={t.id} className={t.done ? 'timer done' : 'timer'}>
               <span className="timer-label">{t.label}</span>
-              <strong className="timer-time">{t.done ? '⏰ Terminé !' : formatClock((t.end - now) / 1000)}</strong>
-              <button className="btn ghost icon" onClick={() => stopTimer(t.id)} aria-label={t.done ? 'OK' : 'Arrêter'}>{t.done ? 'OK' : '✕'}</button>
+              <strong className="timer-time">{t.done ? <span className="inline-icon"><AlarmClock size={18} /> Terminé !</span> : formatClock((t.end - now) / 1000)}</strong>
+              <button className="btn ghost icon" onClick={() => stopTimer(t.id)} aria-label={t.done ? 'OK' : 'Arrêter'}>{t.done ? 'OK' : <X size={18} />}</button>
             </div>
           ))}
         </div>

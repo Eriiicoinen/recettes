@@ -1,3 +1,4 @@
+import { RefreshCw, X } from 'lucide-react'
 import { useState } from 'react'
 import { currentSeason, type Recipe } from '../../lib/recipes'
 import { dayLabel, dropProposal, MEALS, proposeWeek, swapProposal, type Meal, type Proposal, type WeekItem } from '../../lib/week'
@@ -33,7 +34,7 @@ export default function FillSheet({ start, today, items, recipes, lastCooked, on
               onClick={() => toggleMeal(m.id)}>{m.label}</button>
           ))}
           <button className={leftovers ? 'chip on' : 'chip'} aria-pressed={leftovers} onClick={() => redo({ leftovers: !leftovers })}>
-            🍱 Restes du soir le midi
+            Restes du soir le midi
           </button>
         </div>
         {proposals.length === 0 ? (
@@ -44,16 +45,16 @@ export default function FillSheet({ start, today, items, recipes, lastCooked, on
               <li key={`${p.day}${p.meal}`} className="fill-row">
                 <div className="fill-when muted small">{dayLabel(p.day).split(' ').slice(0, 2).join(' ')} · {p.meal}</div>
                 <div className="fill-what">
-                  {p.leftoverOf != null ? <span className="muted">🍱 Restes : {proposals[p.leftoverOf]?.recipe?.name}</span>
+                  {p.leftoverOf != null ? <span className="muted">↳ Restes : {proposals[p.leftoverOf]?.recipe?.name}</span>
                     : p.basketItem && !p.recipe ? <span>{p.basketItem.free_text}</span>
                     : <span>{p.recipe?.name}{p.basketItem && <span className="muted small"> (déjà choisie)</span>}</span>}
                 </div>
                 {p.leftoverOf == null && (
                   <div className="row" style={{ gap: 2 }}>
                     <button className="btn ghost icon" aria-label="Autre recette"
-                      onClick={() => setResult({ unfilled, proposals: swapProposal(proposals, i, recipes, items, lastCooked, season) })}>🔄</button>
+                      onClick={() => setResult({ unfilled, proposals: swapProposal(proposals, i, recipes, items, lastCooked, season) })}><RefreshCw size={18} /></button>
                     <button className="btn ghost icon" aria-label="Laisser libre"
-                      onClick={() => setResult({ unfilled, proposals: dropProposal(proposals, i) })}>✕</button>
+                      onClick={() => setResult({ unfilled, proposals: dropProposal(proposals, i) })}><X size={18} /></button>
                   </div>
                 )}
               </li>
@@ -65,7 +66,7 @@ export default function FillSheet({ start, today, items, recipes, lastCooked, on
             {unfilled} créneau{unfilled > 1 ? 'x restent libres' : ' reste libre'} : plus assez de recettes de saison dans le carnet.
           </p>
         )}
-        <p className="muted small" style={{ margin: 0 }}>Plats de saison, bien notés, pas faits récemment, rapides en semaine. 🔄 pour changer, ✕ pour laisser libre.</p>
+        <p className="muted small" style={{ margin: 0 }}>Plats de saison, bien notés, pas faits récemment, rapides en semaine. Touche ↻ pour changer, × pour laisser libre.</p>
         <button className="btn primary" disabled={proposals.length === 0} onClick={() => onApply(proposals)}>
           Valider{cooked ? ` (${cooked} repas)` : ''}
         </button>
