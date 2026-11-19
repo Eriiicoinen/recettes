@@ -104,3 +104,10 @@ export function cacheGet<T>(key: string): T | null {
 export function cacheSet(key: string, value: unknown) {
   try { localStorage.setItem(key, JSON.stringify(value)) } catch { /* stockage plein ou bloqué */ }
 }
+
+/** Supprime toutes les données mémorisées sur ce téléphone (à la déconnexion). */
+export function clearCaches() {
+  try {
+    for (const k of Object.keys(localStorage)) if (k.startsWith('recettes.')) localStorage.removeItem(k)
+  } catch { /* stockage indisponible */ }
+}

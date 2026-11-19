@@ -7,6 +7,8 @@ const base = process.env.BASE_PATH ?? '/'
 
 export default defineConfig({
   base,
+  // Règles partagées avec les fonctions Supabase (supabase/functions/_shared)
+  server: { fs: { allow: ['..'] } },
   plugins: [
     react(),
     VitePWA({

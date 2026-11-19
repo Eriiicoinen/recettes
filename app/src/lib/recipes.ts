@@ -1,3 +1,4 @@
+import { cacheGet, cacheSet } from './offline'
 import { supabase } from './supabase'
 
 export const CATEGORIES = ['Entrée', 'Plat', 'Accompagnement', 'Soupe', 'Salade', 'Dessert', 'Autre'] as const
@@ -85,9 +86,43 @@ export async function listRecipes(householdId: string, query: string): Promise<R
     if (error) throw error
     return data as Recipe[]
   }
+  const key = `recettes.recipes.${householdId}`
   const { data, error } = await supabase.from('recipes').select('*').eq('household_id', householdId).order('name')
-  if (error) throw error
+  if (error) {
+    // Hors ligne : le carnet mémorisé
+    const cached = cacheGet<Recipe[]>(key)
+    if (cached) return cached
+    throw error
+  }
+  cacheSet(key, data)
   return data as Recipe[]
+}
+
+type RecipeRow = Recipe & {
+  recipe_ingredients: { id: string; ingredient_id: string; quantity: number | null; unit: string | null; note: string | null; position: number; ingredients: { name: string } }[]
+}
+const RECIPE_SELECT = '*, recipe_ingredients(id, ingredient_id, quantity, unit, note, position, ingredients(name))'
+
+function shapeRecipe(data: RecipeRow): { recipe: Recipe; lines: RecipeLine[] } {
+  const { recipe_ingredients, ...recipe } = data
+  const lines = [...recipe_ingredients]
+    .sort((a, b) => a.position - b.position)
+    .map((l) => ({ id: l.id, ingredient_id: l.ingredient_id, name: l.ingredients.name, quantity: l.quantity, unit: l.unit, note: l.note }))
+  return { recipe, lines }
+}
+
+/**
+ * Mémorise toutes les recettes (avec ingrédients) sur le téléphone, pour cuisiner sans réseau.
+ * Au plus une fois toutes les 30 minutes.
+ */
+export async function cacheAllRecipes(householdId: string) {
+  const stamp = `recettes.cachedAt.${householdId}`
+  const last = cacheGet<number>(stamp) ?? 0
+  if (Date.now() - last < 30 * 60_000) return
+  const { data, error } = await supabase.from('recipes').select(RECIPE_SELECT).eq('household_id', householdId)
+  if (error || !data) return
+  for (const row of data as RecipeRow[]) cacheSet(`recettes.recipe.${row.id}`, shapeRecipe(row))
+  cacheSet(stamp, Date.now())
 }
 
 export async function listStats(): Promise<Map<string, RecipeStats>> {
@@ -110,18 +145,17 @@ export async function listAisles(householdId: string): Promise<Aisle[]> {
 }
 
 export async function getRecipe(id: string): Promise<{ recipe: Recipe; lines: RecipeLine[] } | null> {
-  const { data, error } = await supabase.from('recipes')
-    .select('*, recipe_ingredients(id, ingredient_id, quantity, unit, note, position, ingredients(name))')
-    .eq('id', id).maybeSingle()
-  if (error) throw error
-  if (!data) return null
-  const { recipe_ingredients, ...recipe } = data as Recipe & {
-    recipe_ingredients: { id: string; ingredient_id: string; quantity: number | null; unit: string | null; note: string | null; position: number; ingredients: { name: string } }[]
+  const key = `recettes.recipe.${id}`
+  const { data, error } = await supabase.from('recipes').select(RECIPE_SELECT).eq('id', id).maybeSingle()
+  if (error) {
+    const cached = cacheGet<{ recipe: Recipe; lines: RecipeLine[] }>(key)
+    if (cached) return cached
+    throw error
   }
-  const lines = recipe_ingredients
-    .sort((a, b) => a.position - b.position)
-    .map((l) => ({ id: l.id, ingredient_id: l.ingredient_id, name: l.ingredients.name, quantity: l.quantity, unit: l.unit, note: l.note }))
-  return { recipe, lines }
+  if (!data) return null
+  const shaped = shapeRecipe(data as RecipeRow)
+  cacheSet(key, shaped)
+  return shaped
 }
 
 /** Trouve ou crée les ingrédients par nom (sans tenir compte des accents ni de la casse). */
@@ -250,14 +284,21 @@ export function relativeDate(iso: string | null) {
   return `Il y a ${Math.round(days / 30)} mois`
 }
 
-/**
- * Crée un repas sans recette depuis une liste collée (« 200 g fromage à raclette », « cornichons »…).
- * Les articles inconnus sont rangés dans le rayon deviné.
- */
-export async function createSimpleMeal(householdId: string, userId: string, name: string, people: number,
-  linesText: string, aisles: Aisle[], parse: (l: string) => RecipeLine | null, guess: (n: string, a: Aisle[]) => string | null) {
-  const lines = linesText.split(/\r?\n/).map(parse).filter((l): l is RecipeLine => !!l)
-    .map((l) => ({ ...l, name: l.name.charAt(0).toUpperCase() + l.name.slice(1), aisle_id: guess(l.name, aisles) }))
-  const draft: RecipeDraft = { ...emptyDraft(), name: name.trim(), servings: Math.max(1, people), is_simple: true, lines }
-  return saveRecipe(householdId, userId, draft)
+/** Recette en texte simple (WhatsApp, SMS, mail), aux quantités affichées. */
+export function recipeText(recipe: Recipe, lines: RecipeLine[], servings: number) {
+  const f = servings / recipe.servings
+  const out = [`🍽 ${recipe.name}`, `Pour ${yieldLabel(servings, recipe.yield_unit)}`]
+  const t = [recipe.prep_minutes && `préparation ${formatDuration(recipe.prep_minutes)}`, recipe.cook_minutes && `cuisson ${formatDuration(recipe.cook_minutes)}`].filter(Boolean)
+  if (t.length) out.push(t.join(' · '))
+  if (lines.length) {
+    out.push('', recipe.is_simple ? 'À acheter :' : 'Ingrédients :')
+    for (const l of lines) {
+      const q = [formatQty(l.quantity == null ? null : l.quantity * f), l.unit].filter(Boolean).join(' ')
+      out.push(`- ${q ? `${q} ` : ''}${l.name}${l.note ? `, ${l.note}` : ''}`)
+    }
+  }
+  if (recipe.steps.length) out.push('', 'Étapes :', ...recipe.steps.map((st, i) => `${i + 1}. ${st}`))
+  if (recipe.notes) out.push('', recipe.notes)
+  if (recipe.source_url) out.push('', `Source : ${recipe.source_url}`)
+  return out.join('\n')
 }

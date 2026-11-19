@@ -1,4 +1,4 @@
-import type { Recipe } from './recipes'
+import type { Recipe, RecipeStats } from './recipes'
 import { supabase } from './supabase'
 
 export type Meal = 'midi' | 'soir'
@@ -107,6 +107,9 @@ export async function weeksContaining(householdId: string, recipeId: string, sta
 }
 
 // ------------------------------------------------------------------ idées
+
+export const lastCookedMap = (stats: Map<string, RecipeStats>) =>
+  new Map([...stats.values()].map((s) => [s.recipe_id, s.last_cooked]))
 
 const IDEA_CATEGORIES = new Set(['Plat', 'Soupe', 'Salade'])
 
@@ -300,4 +303,53 @@ export async function applyProposals(householdId: string, start: string, proposa
       await addToWeek(householdId, start, { free_text: `Restes : ${recipe.name}`, day: p.day, meal: p.meal, leftover_of: parent.id })
     }
   }
+}
+
+// ------------------------------------------------------------------ reprendre une semaine passée
+
+export type PastWeek = { start: string; items: (WeekItem & { recipes: { name: string } | null })[] }
+
+/** Les semaines précédentes qui ont un menu (8 au plus), la plus récente d'abord. */
+export async function listPastWeeks(householdId: string, before: string): Promise<PastWeek[]> {
+  const { data, error } = await supabase.from('week_items').select('*, recipes(name)')
+    .eq('household_id', householdId).lt('week_start', before).gte('week_start', addDays(before, -7 * 12))
+    .order('week_start', { ascending: false }).order('day').order('meal')
+  if (error) throw error
+  const weeks = new Map<string, PastWeek>()
+  for (const it of data as PastWeek['items']) {
+    if (!weeks.has(it.week_start)) weeks.set(it.week_start, { start: it.week_start, items: [] })
+    weeks.get(it.week_start)!.items.push(it)
+  }
+  return [...weeks.values()].slice(0, 8)
+}
+
+/**
+ * Copie le menu d'une semaine passée : mêmes jours de la semaine, mêmes quantités, restes compris.
+ * Les créneaux déjà remplis et les jours passés sont laissés tels quels. Renvoie le nombre de repas copiés.
+ */
+export async function copyWeek(householdId: string, from: PastWeek, to: string, existing: WeekItem[], today: string) {
+  const offset = Math.round((fromISO(to).getTime() - fromISO(from.start).getTime()) / 86400000)
+  const taken = new Set(existing.filter((i) => i.day).map((i) => `${i.day}|${i.meal}`))
+  const ids = new Map<string, string>()
+  const rows: Record<string, unknown>[] = []
+  // Plats d'abord, restes ensuite (ils pointent vers leur plat)
+  const ordered = [...from.items].sort((a, b) => Number(!!a.leftover_of) - Number(!!b.leftover_of))
+  for (const it of ordered) {
+    const day = it.day ? addDays(it.day, offset) : null
+    if (day && (day < today || taken.has(`${day}|${it.meal}`))) continue
+    if (it.leftover_of && !ids.has(it.leftover_of)) continue
+    if (!day && it.recipe_id && existing.some((e) => e.recipe_id === it.recipe_id)) continue
+    const id = crypto.randomUUID()
+    ids.set(it.id, id)
+    if (day) taken.add(`${day}|${it.meal}`)
+    rows.push({
+      id, household_id: householdId, week_start: to, recipe_id: it.recipe_id, free_text: it.free_text,
+      day, meal: day ? it.meal : null, servings: it.servings, leftover_of: it.leftover_of ? ids.get(it.leftover_of) : null,
+    })
+  }
+  if (rows.length) {
+    const { error } = await supabase.from('week_items').insert(rows)
+    if (error) throw error
+  }
+  return rows.length
 }

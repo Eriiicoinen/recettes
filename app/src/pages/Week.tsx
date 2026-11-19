@@ -1,18 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import ReviewPrompt from '../components/ReviewPrompt'
-import Sheet from '../components/Sheet'
-import { guessAisle } from '../lib/aisleGuess'
-import { parseIngredientLine } from '../lib/parseLine'
-import {
-  createSimpleMeal, currentSeason, getRecipe, listAisles, listRecipes, listStats, norm, yieldLabel, type Recipe, type RecipeStats,
-} from '../lib/recipes'
+import CopyWeekSheet from '../components/week/CopyWeekSheet'
+import FillSheet from '../components/week/FillSheet'
+import ItemSheet from '../components/week/ItemSheet'
+import RecipePicker from '../components/week/RecipePicker'
+import { currentSeason, listRecipes, listStats, yieldLabel, type Recipe, type RecipeStats } from '../lib/recipes'
 import { useSession } from '../lib/session'
-import { supabase } from '../lib/supabase'
+import { useRealtime } from '../lib/realtime'
 import {
-  addDays, addToWeek, applyProposals, dayLabel, defaultServings, dropProposal, listWeek, makeLeftovers, MEALS, mondayOf,
-  pickIdeas, proposeWeek, relativeWeek, removeLeftovers, removeWeekItem, swapProposal, todayISO, updateWeekItem, weekDays,
-  weekLabel, type Meal, type Proposal, type WeekItem,
+  addDays, addToWeek, applyProposals, copyWeek, dayLabel, defaultServings, lastCookedMap, listWeek, makeLeftovers, MEALS, mondayOf,
+  pickIdeas, relativeWeek, removeLeftovers, removeWeekItem, todayISO, updateWeekItem, weekDays, weekLabel, type Meal,
+  type WeekItem,
 } from '../lib/week'
 
 type Target = { day: string; meal: Meal } | 'basket'
@@ -31,6 +30,8 @@ export default function Week() {
   const [moving, setMoving] = useState<WeekItem | null>(null)
   const [ideasSeed, setIdeasSeed] = useState(0)
   const [filling, setFilling] = useState(false)
+  const [copying, setCopying] = useState(false)
+  const [copied, setCopied] = useState('')
   const [error, setError] = useState('')
 
   const reqId = useRef(0)
@@ -51,21 +52,16 @@ export default function Week() {
   useEffect(() => {
     setItems(null)
     void reload()
-    if (!household) return
-    const ch = supabase.channel(`week-${start}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'week_items', filter: `household_id=eq.${household.id}` }, () => void reload())
-      // Les suppressions ne peuvent pas être filtrées côté temps réel : écoutées sans filtre
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'week_items' }, () => void reload())
-      .subscribe()
-    return () => { void supabase.removeChannel(ch) }
-  }, [household, start, reload])
+  }, [reload])
+
+  useRealtime(household && `week-${start}`, [{ table: 'week_items', filter: `household_id=eq.${household?.id}` }], () => void reload())
 
   const basket = useMemo(() => (items ?? []).filter((i) => !i.day), [items])
   const slot = (day: string, meal: Meal) => (items ?? []).filter((i) => i.day === day && i.meal === meal)
 
   const ideas = useMemo(() => {
     const exclude = new Set((items ?? []).map((i) => i.recipe_id).filter((x): x is string => !!x))
-    const last = new Map([...stats.values()].map((s) => [s.recipe_id, s.last_cooked]))
+    const last = lastCookedMap(stats)
     return pickIdeas([...recipes.values()], last, exclude, currentSeason())
     // ideasSeed relance le tirage
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -151,8 +147,12 @@ export default function Week() {
       {items === null ? <p className="muted">Chargement…</p> : (
         <>
           {!moving && addDays(start, 6) >= today && (
-            <button className="btn primary fill-btn" onClick={() => setFilling(true)}>✨ Remplir ma semaine</button>
+            <div className="grid-2">
+              <button className="btn primary" onClick={() => setFilling(true)}>✨ Remplir ma semaine</button>
+              <button className="btn" onClick={() => setCopying(true)}>📋 Reprendre une semaine</button>
+            </div>
           )}
+          {copied && <p className="muted small" role="status" style={{ margin: 0 }}>{copied}</p>}
           <div className="card stack">
             <div className="row between">
               <h2>Recettes de la semaine</h2>
@@ -260,238 +260,29 @@ export default function Week() {
         />
       )}
 
+      {copying && household && items && (
+        <CopyWeekSheet householdId={household.id} before={start} onClose={() => setCopying(false)}
+          onPick={(w) => {
+            setCopying(false)
+            void act(async () => {
+              const n = await copyWeek(household.id, w, start, items, today)
+              setCopied(n ? `✓ ${n} repas repris de la semaine du ${weekLabel(w.start)}.` : 'Rien à reprendre : les créneaux sont déjà remplis ou passés.')
+              setTimeout(() => setCopied(''), 4000)
+            })
+          }} />
+      )}
+
       {filling && household && items && (
         <FillSheet
           start={start}
           today={today}
           items={items}
           recipes={[...recipes.values()]}
-          lastCooked={new Map([...stats.values()].map((s) => [s.recipe_id, s.last_cooked]))}
+          lastCooked={lastCookedMap(stats)}
           onClose={() => setFilling(false)}
           onApply={(proposals) => { setFilling(false); void act(() => applyProposals(household.id, start, proposals, household.people)) }}
         />
       )}
     </section>
-  )
-}
-
-function ItemSheet({ item, name, recipe, people, hasLeftovers, onClose, onServings, onMove, onToBasket, onLeftovers, onRemove }: {
-  item: WeekItem; name: string; recipe: Recipe | null; people: number; hasLeftovers: boolean; onClose: () => void
-  onServings: (n: number) => void; onMove: () => void; onToBasket: () => void; onLeftovers: () => void; onRemove: () => void
-}) {
-  const servings = item.servings ?? (recipe ? defaultServings(recipe, people) : 1)
-  const forPeople = recipe && !recipe.yield_unit
-  return (
-    <Sheet title={name} onClose={onClose}>
-      <div className="stack">
-        {item.day && <p className="muted small" style={{ margin: 0 }}>{dayLabel(item.day)} · {item.meal === 'midi' ? 'Midi' : 'Soir'}</p>}
-        {recipe && (
-          <div className="row between">
-            <span>Quantité</span>
-            <div className="stepper">
-              <button onClick={() => onServings(Math.max(1, servings - 1))} aria-label="Moins">−</button>
-              <span>{yieldLabel(servings, recipe.yield_unit)}</span>
-              <button onClick={() => onServings(servings + 1)} aria-label="Plus">+</button>
-            </div>
-          </div>
-        )}
-        {forPeople && (
-          <div className="row wrap" style={{ gap: 6 }}>
-            <span className="muted small">Invités :</span>
-            {[1, 2, 4].map((n) => (
-              <button key={n} className="chip" onClick={() => onServings(servings + n)}>+{n}</button>
-            ))}
-          </div>
-        )}
-        {forPeople && item.day && !hasLeftovers && (
-          <button className="btn" onClick={onLeftovers}>🍱 Cuisiner ×2 pour les restes ({item.meal === 'soir' ? 'midi du lendemain' : 'le soir'})</button>
-        )}
-        {hasLeftovers && <p className="muted small" style={{ margin: 0 }}>🍱 Cuisiné en double : les restes sont prévus au repas suivant.</p>}
-        {item.leftover_of && <p className="muted small" style={{ margin: 0 }}>Retirer ces restes remet le plat d'origine en quantité simple.</p>}
-        {recipe && <Link className="btn" to={`/recettes/${recipe.id}`}>Ouvrir la recette</Link>}
-        <button className="btn" onClick={onMove}>{item.day ? 'Déplacer…' : 'Placer dans un créneau…'}</button>
-        {item.day && <button className="btn" onClick={onToBasket}>Remettre sans jour précis</button>}
-        <button className="btn ghost danger" onClick={onRemove}>Retirer de la semaine</button>
-      </div>
-    </Sheet>
-  )
-}
-
-const QUICK = [['🚫', 'Absents'], ['🍽', 'Resto'], ['🥡', 'Restes'], ['🥪', 'Sur le pouce']] as const
-
-function RecipePicker({ title, householdId, people, basket, basketName, onPickRecipe, onPickBasket, onFreeText, onClose }: {
-  title: string; householdId: string; people: number; basket: WeekItem[]; basketName: (i: WeekItem) => string
-  onPickRecipe: (r: Recipe) => void; onPickBasket: (i: WeekItem) => void; onFreeText: (t: string) => void; onClose: () => void
-}) {
-  const { session } = useSession()
-  const [q, setQ] = useState('')
-  const [results, setResults] = useState<Recipe[] | null>(null)
-  const [free, setFree] = useState('')
-  const [simple, setSimple] = useState<{ name: string; lines: string } | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [simpleError, setSimpleError] = useState('')
-
-  useEffect(() => {
-    let cancelled = false
-    const t = setTimeout(() => {
-      listRecipes(householdId, q).then((r) => { if (!cancelled) setResults(r) }).catch(() => {})
-    }, q ? 200 : 0)
-    return () => { cancelled = true; clearTimeout(t) }
-  }, [q, householdId])
-
-  async function saveSimple() {
-    if (!simple || !simple.name.trim() || !session) return
-    setSaving(true)
-    setSimpleError('')
-    try {
-      const aisles = await listAisles(householdId)
-      const id = await createSimpleMeal(householdId, session.user.id, simple.name, people, simple.lines, aisles, parseIngredientLine, guessAisle)
-      const r = await getRecipe(id)
-      if (r) onPickRecipe(r.recipe)
-    } catch (e) {
-      setSimpleError((e as Error).message)
-      setSaving(false)
-    }
-  }
-
-  if (simple) {
-    return (
-      <Sheet title="Repas sans recette" onClose={onClose}>
-        <div className="stack">
-          <label className="field">
-            <span>Nom</span>
-            <input value={simple.name} onChange={(e) => setSimple({ ...simple, name: e.target.value })} placeholder="Raclette, fondue, apéro…" autoFocus />
-          </label>
-          <label className="field">
-            <span>À acheter pour {people} personne{people > 1 ? 's' : ''} <small className="muted">(une ligne par article)</small></span>
-            <textarea rows={7} value={simple.lines} onChange={(e) => setSimple({ ...simple, lines: e.target.value })}
-              placeholder={'800 g de fromage à raclette\n1 kg de pommes de terre\n400 g de charcuterie\nCornichons'} />
-          </label>
-          <p className="muted small" style={{ margin: 0 }}>
-            Gardé dans ton carnet (filtre « 🧺 Sans recette ») pour la prochaine fois. Les quantités s'adaptent aux invités.
-          </p>
-          {simpleError && <p className="error" style={{ margin: 0 }}>{simpleError}</p>}
-          <div className="row between">
-            <button className="btn ghost" onClick={() => setSimple(null)} disabled={saving}>Retour</button>
-            <button className="btn primary" onClick={saveSimple} disabled={saving || !simple.name.trim()}>
-              {saving ? 'Enregistrement…' : 'Ajouter au menu'}
-            </button>
-          </div>
-        </div>
-      </Sheet>
-    )
-  }
-
-
-  return (
-    <Sheet title={title} onClose={onClose}>
-      <div className="stack">
-        {basket.length > 0 && !q && (
-          <div className="stack" style={{ gap: 6 }}>
-            <div className="muted small">Depuis les recettes de la semaine</div>
-            {basket.map((i) => (
-              <button key={i.id} className="pick-row accent" onClick={() => onPickBasket(i)}>{basketName(i)}</button>
-            ))}
-          </div>
-        )}
-        <div className="search">
-          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Chercher une recette…" aria-label="Chercher une recette" />
-        </div>
-        <div className="pick-list">
-          {results === null ? <p className="muted">Chargement…</p> : results.length === 0 ? (
-            <p className="muted small">{q ? 'Aucune recette.' : 'Ton carnet est vide.'}</p>
-          ) : results.slice(0, 50).map((r) => (
-            <button key={r.id} className="pick-row" onClick={() => onPickRecipe(r)}>
-              <span>{r.name}</span>
-              <span className="muted small">{r.category}</span>
-            </button>
-          ))}
-        </div>
-        <button className="btn" onClick={() => setSimple({ name: q.trim(), lines: '' })}>🧺 Repas sans recette (raclette, fondue…)</button>
-        <div className="row wrap" style={{ gap: 6 }}>
-          {QUICK.map(([icon, label]) => (
-            <button key={label} className="chip" onClick={() => onFreeText(label)}>{icon} {label}</button>
-          ))}
-        </div>
-        <form className="row" onSubmit={(e) => { e.preventDefault(); if (free.trim()) onFreeText(free.trim()) }}>
-          <input style={{ flex: 1, minWidth: 0 }} value={free} onChange={(e) => setFree(e.target.value)}
-            placeholder="Ou autre chose : restes, resto…" aria-label="Texte libre" />
-          <button className="btn" disabled={!free.trim()}>OK</button>
-        </form>
-        {q && norm(q).length > 0 && results?.length === 0 && (
-          <button className="btn ghost small-btn" onClick={() => onFreeText(q.trim())}>Ajouter « {q.trim()} » comme texte libre</button>
-        )}
-      </div>
-    </Sheet>
-  )
-}
-
-function FillSheet({ start, today, items, recipes, lastCooked, onClose, onApply }: {
-  start: string; today: string; items: WeekItem[]; recipes: Recipe[]; lastCooked: Map<string, string | null>
-  onClose: () => void; onApply: (p: Proposal[]) => void
-}) {
-  const season = currentSeason()
-  const [meals, setMeals] = useState<Meal[]>(['midi', 'soir'])
-  const [leftovers, setLeftovers] = useState(false)
-  const [result, setResult] = useState(() => proposeWeek({ start, today, meals, items, recipes, lastCooked, season, leftovers }))
-
-  function redo(next: { meals?: Meal[]; leftovers?: boolean }) {
-    const m = next.meals ?? meals
-    const l = next.leftovers ?? leftovers
-    setMeals(m)
-    setLeftovers(l)
-    setResult(proposeWeek({ start, today, meals: m, items, recipes, lastCooked, season, leftovers: l }))
-  }
-  const toggleMeal = (m: Meal) => redo({ meals: meals.includes(m) ? meals.filter((x) => x !== m) : [...meals, m] })
-  const { proposals, unfilled } = result
-  const cooked = proposals.filter((p) => p.leftoverOf == null).length
-
-  return (
-    <Sheet title="Remplir ma semaine" onClose={onClose}>
-      <div className="stack">
-        <div className="row wrap" style={{ gap: 6 }}>
-          {MEALS.map((m) => (
-            <button key={m.id} className={meals.includes(m.id) ? 'chip on' : 'chip'} aria-pressed={meals.includes(m.id)}
-              onClick={() => toggleMeal(m.id)}>{m.label}</button>
-          ))}
-          <button className={leftovers ? 'chip on' : 'chip'} aria-pressed={leftovers} onClick={() => redo({ leftovers: !leftovers })}>
-            🍱 Restes du soir le midi
-          </button>
-        </div>
-        {proposals.length === 0 ? (
-          <p className="muted">{unfilled ? 'Pas de recette disponible : ajoute des plats à ton carnet (ou vérifie leurs saisons).' : 'Tous les créneaux sont déjà remplis.'}</p>
-        ) : (
-          <ul className="plain fill-list">
-            {proposals.map((p, i) => (
-              <li key={`${p.day}${p.meal}`} className="fill-row">
-                <div className="fill-when muted small">{dayLabel(p.day).split(' ').slice(0, 2).join(' ')} · {p.meal}</div>
-                <div className="fill-what">
-                  {p.leftoverOf != null ? <span className="muted">🍱 Restes : {proposals[p.leftoverOf]?.recipe?.name}</span>
-                    : p.basketItem && !p.recipe ? <span>{p.basketItem.free_text}</span>
-                    : <span>{p.recipe?.name}{p.basketItem && <span className="muted small"> (déjà choisie)</span>}</span>}
-                </div>
-                {p.leftoverOf == null && (
-                  <div className="row" style={{ gap: 2 }}>
-                    <button className="btn ghost icon" aria-label="Autre recette"
-                      onClick={() => setResult({ unfilled, proposals: swapProposal(proposals, i, recipes, items, lastCooked, season) })}>🔄</button>
-                    <button className="btn ghost icon" aria-label="Laisser libre"
-                      onClick={() => setResult({ unfilled, proposals: dropProposal(proposals, i) })}>✕</button>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-        {proposals.length > 0 && unfilled > 0 && (
-          <p className="muted small" style={{ margin: 0 }}>
-            {unfilled} créneau{unfilled > 1 ? 'x restent libres' : ' reste libre'} : plus assez de recettes de saison dans le carnet.
-          </p>
-        )}
-        <p className="muted small" style={{ margin: 0 }}>Plats de saison, bien notés, pas faits récemment, rapides en semaine. 🔄 pour changer, ✕ pour laisser libre.</p>
-        <button className="btn primary" disabled={proposals.length === 0} onClick={() => onApply(proposals)}>
-          Valider{cooked ? ` (${cooked} repas)` : ''}
-        </button>
-      </div>
-    </Sheet>
   )
 }

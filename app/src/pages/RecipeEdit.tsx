@@ -7,6 +7,7 @@ import {
   CATEGORIES, emptyDraft, getRecipe, listAisles, listIngredients, ingKey, parseQty, saveRecipe, SEASONS, UNITS,
   type Aisle, type Ingredient, type RecipeDraft, type RecipeLine,
 } from '../lib/recipes'
+import { removeRecipePhoto, setRecipePhoto } from '../lib/photos'
 import { useSession } from '../lib/session'
 
 type Row = { key: number; qty: string; unit: string; name: string; aisle_id: string | null; aisleTouched: boolean }
@@ -41,6 +42,8 @@ export default function RecipeEdit() {
   const [loading, setLoading] = useState(!!id)
   const [loadError, setLoadError] = useState('')
   const [saving, setSaving] = useState(false)
+  // Photo choisie (envoyée après l'enregistrement, quand la recette a son identifiant) ou retirée
+  const [photo, setPhoto] = useState<{ file: File; preview: string } | 'remove' | null>(null)
   const [error, setError] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
   const [importInput, setImportInput] = useState(() => searchParams.get('import') ?? '')
@@ -159,6 +162,10 @@ export default function RecipeEdit() {
         tags: tagsText.split(',').map((t) => t.replace(/^#/, '')),
         lines,
       }, id)
+      try {
+        if (photo === 'remove') await removeRecipePhoto(saved, draft.photo_url)
+        else if (photo) await setRecipePhoto(household.id, saved, photo.file, draft.photo_url)
+      } catch { /* la recette est enregistrée ; la photo pourra être ajoutée depuis la fiche */ }
       navigate(`/recettes/${saved}`, { replace: true })
     } catch (err) {
       setError((err as Error).message)
@@ -227,6 +234,26 @@ export default function RecipeEdit() {
         <input required value={draft.name} onChange={(e) => set('name', e.target.value)}
           placeholder={draft.is_simple ? 'Raclette' : "Minestrone d'hiver"} />
       </label>
+
+      <div className="field">
+        <span>Photo du plat</span>
+        <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+          {(photo && photo !== 'remove' ? photo.preview : photo === 'remove' ? null : draft.photo_url) && (
+            <img className="thumb big" src={photo && photo !== 'remove' ? photo.preview : draft.photo_url!} alt="" />
+          )}
+          <label className="btn small-btn">
+            📷 {draft.photo_url || (photo && photo !== 'remove') ? 'Changer' : 'Choisir'}
+            <input type="file" accept="image/*" hidden onChange={(e) => {
+              const f = e.target.files?.[0]
+              e.target.value = ''
+              if (f) setPhoto({ file: f, preview: URL.createObjectURL(f) })
+            }} />
+          </label>
+          {(draft.photo_url || (photo && photo !== 'remove')) && photo !== 'remove' && (
+            <button type="button" className="btn ghost small-btn" onClick={() => setPhoto(draft.photo_url ? 'remove' : null)}>Retirer</button>
+          )}
+        </div>
+      </div>
 
       <div className="grid-2">
         <label className="field">

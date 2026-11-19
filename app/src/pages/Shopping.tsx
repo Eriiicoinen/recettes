@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import Sheet from '../components/Sheet'
+import RecurringSheet from '../components/shopping/RecurringSheet'
 import { guessAisle } from '../lib/aisleGuess'
 import { cacheGet, cacheSet, flush, onQueueChange, run } from '../lib/offline'
 import { ingKey, listAisles, listIngredients, type Aisle, type Ingredient } from '../lib/recipes'
@@ -8,6 +9,7 @@ import { useSession } from '../lib/session'
 import {
   addRecurring, formatAmount, listItems, listRecurring, listText, removeRecurring, syncList, type RecurringItem, type ShoppingItem,
 } from '../lib/shopping'
+import { useRealtime } from '../lib/realtime'
 import { supabase, type Member } from '../lib/supabase'
 import { addDays, mondayOf, relativeWeek, todayISO, weekLabel } from '../lib/week'
 
@@ -91,26 +93,22 @@ export default function Shopping() {
     setMembers(cached?.members ?? [])
     setMissing(cached?.missing ?? [])
     void load(true)
-    if (!household) return
-    // Regroupe les rafales d'événements (une synchro modifie plusieurs lignes) en un seul rechargement
-    let timer: ReturnType<typeof setTimeout> | undefined
-    let wantSync = false
-    const schedule = (withSync: boolean) => {
-      wantSync ||= withSync
-      clearTimeout(timer)
-      timer = setTimeout(() => { const s = wantSync; wantSync = false; void load(s) }, 300)
-    }
-    const filter = `household_id=eq.${household.id}`
-    // Les suppressions ne peuvent pas être filtrées par foyer côté temps réel : on les écoute sans filtre
-    const ch = supabase.channel(`shopping-${week}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'week_items', filter }, () => schedule(true))
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'week_items' }, () => schedule(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'shopping_items', filter }, () => schedule(false))
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'shopping_items' }, () => schedule(false))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'recurring_items', filter }, () => schedule(true))
-      .subscribe()
-    return () => { clearTimeout(timer); void supabase.removeChannel(ch) }
+    const b = burst.current
+    return () => { clearTimeout(b.timer) }
   }, [household, week, cacheKey, load])
+
+  // Regroupe les rafales d'événements (une synchro modifie plusieurs lignes) en un seul rechargement ;
+  // le menu ou les articles réguliers changent → recalcul de la liste, sinon simple relecture
+  const burst = useRef<{ timer?: ReturnType<typeof setTimeout>; sync: boolean }>({ sync: false })
+  const filter = `household_id=eq.${household?.id}`
+  useRealtime(household && `shopping-${week}`, [
+    { table: 'week_items', filter }, { table: 'shopping_items', filter }, { table: 'recurring_items', filter },
+  ], (table) => {
+    const b = burst.current
+    b.sync ||= table !== 'shopping_items'
+    clearTimeout(b.timer)
+    b.timer = setTimeout(() => { const s = b.sync; b.sync = false; void load(s) }, 300)
+  })
 
   useEffect(() => {
     const on = () => { setOnline(true); void load(true) }
@@ -396,41 +394,5 @@ export default function Shopping() {
         </Sheet>
       )}
     </section>
-  )
-}
-
-function RecurringSheet({ items, onClose, onAdd, onRemove }: {
-  items: RecurringItem[]; onClose: () => void; onAdd: (label: string) => void; onRemove: (id: string) => void
-}) {
-  const [label, setLabel] = useState('')
-  return (
-    <Sheet title="Articles de chaque semaine" onClose={onClose}>
-      <div className="stack">
-        <p className="muted small" style={{ margin: 0 }}>
-          Ajoutés automatiquement à la liste de chaque nouvelle semaine. « Pas besoin cette semaine » les retire juste pour une semaine.
-        </p>
-        <form className="row" onSubmit={(e) => {
-          e.preventDefault()
-          const l = label.trim()
-          if (!l) return
-          onAdd(l.charAt(0).toUpperCase() + l.slice(1))
-          setLabel('')
-        }}>
-          <input style={{ flex: 1, minWidth: 0 }} value={label} onChange={(e) => setLabel(e.target.value)}
-            placeholder="Lait, pain, café…" aria-label="Nouvel article régulier" />
-          <button className="btn primary" disabled={!label.trim()}>Ajouter</button>
-        </form>
-        {items.length === 0 ? <p className="muted small">Aucun pour l'instant.</p> : (
-          <ul className="plain">
-            {items.map((r) => (
-              <li key={r.id} className="row between">
-                <span>{r.label}</span>
-                <button className="btn ghost small-btn danger" onClick={() => onRemove(r.id)} aria-label={`Retirer ${r.label}`}>Retirer</button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </Sheet>
   )
 }

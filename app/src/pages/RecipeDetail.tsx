@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
-  deleteRecipe, formatDuration, formatQty, getRecipe, listStats, relativeDate, setFavorite, yieldLabel,
+  deleteRecipe, formatDuration, formatQty, getRecipe, listStats, recipeText, relativeDate, setFavorite, yieldLabel,
   type Recipe, type RecipeLine, type RecipeStats,
 } from '../lib/recipes'
-import { supabase } from '../lib/supabase'
+import { useRealtime } from '../lib/realtime'
 import Sheet from '../components/Sheet'
+import { deleteRecipePhotos, setRecipePhoto } from '../lib/photos'
 import { useSession } from '../lib/session'
 import { findDurations, formatClock, useTimers } from '../lib/timers'
 import { addDays, addToWeek, defaultServings, mondayOf, relativeWeek, todayISO, weekLabel, weeksContaining } from '../lib/week'
@@ -33,6 +34,37 @@ export default function RecipeDetail() {
   const [inWeeks, setInWeeks] = useState<Set<string>>(new Set())
   const [planned, setPlanned] = useState('')
   const { timers, now, start: startTimer, stop: stopTimer } = useTimers()
+  const [flash, setFlash] = useState('')
+  const [photoBusy, setPhotoBusy] = useState(false)
+
+  function notify(msg: string) {
+    setFlash(msg)
+    setTimeout(() => setFlash(''), 2500)
+  }
+
+  async function share() {
+    if (!recipe) return
+    const text = recipeText(recipe, lines, servings)
+    try {
+      if (navigator.share) await navigator.share({ title: recipe.name, text })
+      else { await navigator.clipboard.writeText(text); notify('Recette copiée ✓') }
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return
+      try { await navigator.clipboard.writeText(text); notify('Recette copiée ✓') } catch { notify('Partage impossible sur cet appareil.') }
+    }
+  }
+
+  async function changePhoto(file: File | undefined) {
+    if (!file || !recipe || !household) return
+    setPhotoBusy(true)
+    try {
+      const url = await setRecipePhoto(household.id, recipe.id, file, recipe.photo_url)
+      setRecipe({ ...recipe, photo_url: url })
+    } catch (e) {
+      notify((e as Error).message)
+    }
+    setPhotoBusy(false)
+  }
 
   async function openPlan() {
     if (!household || !recipe) return
@@ -50,26 +82,26 @@ export default function RecipeDetail() {
     setPlanned(`Ajoutée : ${relativeWeek(week).toLowerCase()}`)
   }
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!id) return
-    const load = async () => {
-      const r = await getRecipe(id)
-      if (!r) { setMissing(true); return }
-      setRecipe((prev) => {
-        if (!prev || prev.servings !== r.recipe.servings) setServings(r.recipe.servings)
-        return r.recipe
-      })
-      setLines(r.lines)
-      setStats((await listStats()).get(id))
-    }
-    void load()
-    const ch = supabase.channel(`recipe-${id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'recipes', filter: `id=eq.${id}` }, () => void load())
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'recipes' }, (p) => { if ((p.old as { id?: string }).id === id) void load() })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'recipe_ingredients', filter: `recipe_id=eq.${id}` }, () => void load())
-      .subscribe()
-    return () => { void supabase.removeChannel(ch) }
+    const r = await getRecipe(id)
+    if (!r) { setMissing(true); return }
+    setRecipe((prev) => {
+      if (!prev || prev.servings !== r.recipe.servings) setServings(r.recipe.servings)
+      return r.recipe
+    })
+    setLines(r.lines)
+    setStats((await listStats()).get(id))
   }, [id])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  useRealtime(id ? `recipe-${id}` : null, [
+    { table: 'recipes', filter: `id=eq.${id}` },
+    { table: 'recipe_ingredients', filter: `recipe_id=eq.${id}` },
+  ], () => void load())
 
   // Mode cuisine : écran maintenu allumé
   useEffect(() => {
@@ -97,6 +129,7 @@ export default function RecipeDetail() {
   }
 
   async function remove() {
+    if (household) await deleteRecipePhotos(household.id, recipe!.id).catch(() => {})
     await deleteRecipe(recipe!.id)
     navigate('/recettes', { replace: true })
   }
@@ -113,6 +146,8 @@ export default function RecipeDetail() {
           <Link className="btn ghost" to={`/recettes/${recipe.id}/modifier`}>Modifier</Link>
         </div>
       </div>
+
+      {recipe.photo_url && !cooking && <img className="hero" src={recipe.photo_url} alt="" />}
 
       <header className="stack" style={{ gap: 6 }}>
         <h1 style={{ margin: 0 }}>{recipe.name}</h1>
@@ -137,6 +172,17 @@ export default function RecipeDetail() {
           </button>
         )}
       </div>
+      {!cooking && (
+        <div className="row wrap" style={{ gap: 6 }}>
+          <button className="btn small-btn" onClick={share}>📤 Partager</button>
+          <label className={photoBusy ? 'btn small-btn disabled' : 'btn small-btn'}>
+            {photoBusy ? 'Envoi…' : recipe.photo_url ? '📷 Changer la photo' : '📷 Ajouter une photo'}
+            <input type="file" accept="image/*" hidden disabled={photoBusy}
+              onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; void changePhoto(f) }} />
+          </label>
+        </div>
+      )}
+      {flash && <p className="muted small" role="status" style={{ margin: 0 }}>{flash}</p>}
       {planned && <p className="muted small" role="status" style={{ margin: 0 }}>✓ {planned}</p>}
       {planOpen && (
         <Sheet title="Ajouter à quelle semaine ?" onClose={() => setPlanOpen(false)}>

@@ -1,6 +1,7 @@
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import type { Aisle, RecipeDraft, RecipeLine } from './recipes'
 import { emptyDraft } from './recipes'
+import { blobToBase64, shrinkImage } from './images'
 import { supabase } from './supabase'
 
 type Imported = {
@@ -30,15 +31,7 @@ type Photo = { media_type: string; data: string }
 
 /** Photo réduite (1600 px au plus) en JPEG : lisible par Claude, légère à envoyer. */
 async function shrink(file: File): Promise<Photo> {
-  const bitmap = await createImageBitmap(file)
-  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height))
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.round(bitmap.width * scale)
-  canvas.height = Math.round(bitmap.height * scale)
-  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-  bitmap.close()
-  const url = canvas.toDataURL('image/jpeg', 0.85)
-  return { media_type: 'image/jpeg', data: url.slice(url.indexOf(',') + 1) }
+  return { media_type: 'image/jpeg', data: await blobToBase64(await shrinkImage(file, 1600)) }
 }
 
 export async function importPhotos(files: File[], aisles: Aisle[]) {

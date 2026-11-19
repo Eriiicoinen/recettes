@@ -2,6 +2,7 @@
 // Transport Streamable HTTP sans état : chaque POST contient un message JSON-RPC, la réponse est du JSON.
 // URL : https://<projet>.supabase.co/functions/v1/mcp/<code secret>  — le code identifie le foyer.
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.119.2'
+import { guessAisleName } from '../_shared/aisleRules.ts'
 
 const APP_URL = 'https://eriiicoinen.github.io/recettes/#'
 const SUPPORTED_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26']
@@ -236,7 +237,7 @@ async function addRecipe(ctx: Ctx, a: Record<string, unknown>) {
         household_id: ctx.householdId,
         name: capitalize(i.name.trim()),
         default_unit: i.unit || null,
-        aisle_id: i.aisle ? aisleByName.get(i.aisle) ?? null : null,
+        aisle_id: (i.aisle ? aisleByName.get(i.aisle) : null) ?? aisleByName.get(guessAisleName(i.name) ?? '') ?? null,
       }))
       const { data: created, error: insErr } = await ctx.db.from('ingredients').insert(newRows).select('id, name')
       if (insErr) {
@@ -426,9 +427,11 @@ async function addShoppingItem(ctx: Ctx, a: Record<string, unknown>) {
     ctx.db.from('aisles').select('id, name').eq('household_id', ctx.householdId),
   ])
   const aisleOf = new Map((known ?? []).map((k) => [ingKey(k.name), k.aisle_id as string | null]))
-  const other = (aisles ?? []).find((x) => x.name === 'Autre')?.id ?? null
+  const aisleId = (name: string | null) => (aisles ?? []).find((x) => x.name === name)?.id ?? null
+  // Rayon : celui de l'ingrédient connu, sinon deviné comme dans l'application (« Lait » → Crèmerie), sinon « Autre »
   const { error } = await ctx.db.from('shopping_items').insert(labels.map((l) => ({
-    household_id: ctx.householdId, week_start: week, origin: 'manual', label: capitalize(l), aisle_id: aisleOf.get(ingKey(l)) ?? other,
+    household_id: ctx.householdId, week_start: week, origin: 'manual', label: capitalize(l),
+    aisle_id: aisleOf.get(ingKey(l)) ?? aisleId(guessAisleName(l)) ?? aisleId('Autre'),
   })))
   if (error) return text(`Ajout impossible : ${error.message}`, true)
   return text(`Ajouté à la liste de courses : ${labels.join(', ')}. Liste : ${APP_URL}/courses${week === resolveWeek('this') ? '' : `?s=${week}`}`)

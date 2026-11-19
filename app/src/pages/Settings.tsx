@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useSession } from '../lib/session'
 import { supabase, type Member } from '../lib/supabase'
+import { useRealtime } from '../lib/realtime'
 import ConnectorCard from './ConnectorCard'
 
 export default function Settings() {
@@ -16,19 +17,15 @@ export default function Settings() {
   const [members, setMembers] = useState<Member[]>([])
   const [copied, setCopied] = useState(false)
 
-  useEffect(() => {
+  const loadMembers = useCallback(() => {
     if (!household) return
-    const load = () =>
-      supabase.from('household_members').select('household_id, user_id, display_name')
-        .eq('household_id', household.id).order('joined_at')
-        .then(({ data }) => setMembers(data ?? []))
-    void load()
-    // Démonstration du temps réel : l'autre téléphone apparaît dès qu'il rejoint
-    const ch = supabase.channel('members')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'household_members', filter: `household_id=eq.${household.id}` }, load)
-      .subscribe()
-    return () => { void supabase.removeChannel(ch) }
+    void supabase.from('household_members').select('household_id, user_id, display_name')
+      .eq('household_id', household.id).order('joined_at')
+      .then(({ data }) => setMembers(data ?? []))
   }, [household])
+  useEffect(loadMembers, [loadMembers])
+  // L'autre téléphone apparaît dès qu'il rejoint le foyer
+  useRealtime(household && 'members', [{ table: 'household_members', filter: `household_id=eq.${household?.id}` }], loadMembers)
 
   if (!household) return null
 

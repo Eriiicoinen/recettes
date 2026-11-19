@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import ReviewPrompt from '../components/ReviewPrompt'
 import {
-  CATEGORIES, currentSeason, formatDuration, listRecipes, listStats, relativeDate,
+  cacheAllRecipes, CATEGORIES, currentSeason, formatDuration, listRecipes, listStats, relativeDate,
   type Recipe, type RecipeStats,
 } from '../lib/recipes'
 import { useSession } from '../lib/session'
-import { supabase } from '../lib/supabase'
+import { useRealtime } from '../lib/realtime'
 
 type Chip = 'favoris' | 'saison' | 'rapide' | 'oubliees' | 'simples'
 const CHIPS: { id: Chip; label: string }[] = [
@@ -31,28 +31,27 @@ export default function RecipeList() {
     try { sessionStorage.setItem('recipes.q', query) } catch { /* stockage indisponible */ }
   }, [query])
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!household) return
-    const load = async () => {
-      const id = ++reqId.current
-      try {
-        const [r, s] = await Promise.all([listRecipes(household.id, query), listStats()])
-        if (id !== reqId.current) return // une recherche plus récente a été lancée
-        setRecipes(r)
-        setStats(s)
-        setError('')
-      } catch (e) {
-        if (id === reqId.current) setError((e as Error).message)
-      }
+    const id = ++reqId.current
+    try {
+      const [r, s] = await Promise.all([listRecipes(household.id, query), listStats()])
+      if (id !== reqId.current) return // une recherche plus récente a été lancée
+      setRecipes(r)
+      setStats(s)
+      setError('')
+      if (!query) void cacheAllRecipes(household.id) // pour cuisiner sans réseau
+    } catch (e) {
+      if (id === reqId.current) setError((e as Error).message)
     }
-    const t = setTimeout(load, query ? 200 : 0)
-    const ch = supabase.channel('recipes-list')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'recipes', filter: `household_id=eq.${household.id}` }, () => void load())
-      // Les suppressions ne peuvent pas être filtrées côté temps réel : écoutées sans filtre
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'recipes' }, () => void load())
-      .subscribe()
-    return () => { clearTimeout(t); void supabase.removeChannel(ch) }
   }, [household, query])
+
+  useEffect(() => {
+    const t = setTimeout(load, query ? 200 : 0)
+    return () => clearTimeout(t)
+  }, [load, query])
+
+  useRealtime(household && 'recipes-list', [{ table: 'recipes', filter: `household_id=eq.${household?.id}` }], () => void load())
 
   const filtered = useMemo(() => {
     if (!recipes) return null
@@ -134,6 +133,8 @@ export default function RecipeList() {
               return (
                 <li key={r.id}>
                   <Link to={`/recettes/${r.id}`} className="recipe-card">
+                    {r.photo_url ? <img className="thumb" src={r.photo_url} alt="" loading="lazy" />
+                      : <span className="thumb empty" aria-hidden>{r.is_simple ? '🧺' : '🍽'}</span>}
                     <div className="recipe-card-main">
                       <div className="recipe-name">{r.is_favorite && <span className="fav" aria-label="Favori">♥ </span>}{r.name}</div>
                       <div className="muted small">
