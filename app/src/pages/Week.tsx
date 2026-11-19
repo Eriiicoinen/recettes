@@ -331,6 +331,14 @@ function RecipePicker({ title, householdId, people, basket, basketName, onPickRe
   const [saving, setSaving] = useState(false)
   const [simpleError, setSimpleError] = useState('')
 
+  useEffect(() => {
+    let cancelled = false
+    const t = setTimeout(() => {
+      listRecipes(householdId, q).then((r) => { if (!cancelled) setResults(r) }).catch(() => {})
+    }, q ? 200 : 0)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [q, householdId])
+
   async function saveSimple() {
     if (!simple || !simple.name.trim() || !session) return
     setSaving(true)
@@ -374,13 +382,6 @@ function RecipePicker({ title, householdId, people, basket, basketName, onPickRe
     )
   }
 
-  useEffect(() => {
-    let cancelled = false
-    const t = setTimeout(() => {
-      listRecipes(householdId, q).then((r) => { if (!cancelled) setResults(r) }).catch(() => {})
-    }, q ? 200 : 0)
-    return () => { cancelled = true; clearTimeout(t) }
-  }, [q, householdId])
 
   return (
     <Sheet title={title} onClose={onClose}>
