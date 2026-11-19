@@ -11,6 +11,12 @@ export type PageContent = {
 
 const MAX_TEXT = 60_000
 
+/** Page de vérification anti-robots (Cloudflare, Overblog, captcha…) au lieu du contenu. */
+export function isBotChallenge(html: string): boolean {
+  return /confirm that you are human|security check|just a moment\.\.\.|cf-chl-|captcha|anti-bot protection|vérification de sécurité/i
+    .test(html.slice(0, 20_000))
+}
+
 export function extractFromHtml(html: string): PageContent {
   return {
     jsonLd: findRecipeJsonLd(html),

@@ -4,7 +4,7 @@ import Anthropic from 'npm:@anthropic-ai/sdk@1.10.0'
 import { zodOutputFormat } from 'npm:@anthropic-ai/sdk@1.10.0/helpers/zod'
 import { createClient } from 'npm:@supabase/supabase-js@2.119.2'
 import { z } from 'npm:zod@4.6.7'
-import { extractFromHtml } from './extract.ts'
+import { extractFromHtml, isBotChallenge } from './extract.ts'
 
 const CATEGORIES = ['Entrée', 'Plat', 'Accompagnement', 'Soupe', 'Salade', 'Dessert', 'Autre'] as const
 const SEASONS = ['Printemps', 'Été', 'Automne', 'Hiver'] as const
@@ -66,7 +66,9 @@ async function fetchDirect(url: URL): Promise<Direct> {
   try {
     const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(12_000), headers: BROWSER_HEADERS })
     if (!res.ok) return { ok: false, status: res.status }
-    const page = extractFromHtml(await res.text())
+    const html = await res.text()
+    if (isBotChallenge(html)) return { ok: false, status: 429 }
+    const page = extractFromHtml(html)
     const finalUrl = res.url || url.href
     if (page.jsonLd) return { ok: true, finalUrl, content: `Données structurées schema.org de la page ${finalUrl} :\n${JSON.stringify(page.jsonLd)}` }
     // Page sans données structurées et presque vide : probablement une page anti-robots
@@ -147,7 +149,11 @@ Deno.serve(async (req) => {
       } else {
         // Site qui bloque les serveurs (403, 429, protection anti-robots…) : la page est lue par l'outil web_fetch d'Anthropic
         const viaClaude = await fetchViaClaude(anthropic, parsed.href)
-        if (!viaClaude) return json({ error: 'Ce site bloque la lecture automatique. Copie le texte de la recette et colle-le ici.' }, 422)
+        if (!viaClaude) {
+          return json({
+            error: 'Ce site bloque la lecture automatique (protection anti-robots). Ouvre la recette sur ton téléphone, copie son texte et colle-le ici à la place du lien.',
+          }, 422)
+        }
         sourceUrl = parsed.href
         content = `Recette lue sur ${sourceUrl} :\n${viaClaude}`
       }
