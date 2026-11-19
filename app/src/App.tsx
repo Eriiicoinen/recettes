@@ -4,6 +4,9 @@ import { configMissing } from './lib/supabase'
 import Login from './pages/Login'
 import Onboarding from './pages/Onboarding'
 import Placeholder from './pages/Placeholder'
+import RecipeDetail from './pages/RecipeDetail'
+import RecipeEdit from './pages/RecipeEdit'
+import RecipeList from './pages/RecipeList'
 import Settings from './pages/Settings'
 
 const TABS = [
@@ -27,7 +30,10 @@ function Shell() {
     <div className="app">
       <div className="content">
         <Routes>
-          <Route path="/recettes" element={<Placeholder title="Recettes" text="Le carnet de recettes arrive à l'étape M1." />} />
+          <Route path="/recettes" element={<RecipeList />} />
+          <Route path="/recettes/nouvelle" element={<RecipeEdit />} />
+          <Route path="/recettes/:id" element={<RecipeDetail />} />
+          <Route path="/recettes/:id/modifier" element={<RecipeEdit />} />
           <Route path="/semaine" element={<Placeholder title="Semaine" text="Le menu de la semaine arrive à l'étape M4." />} />
           <Route path="/courses" element={<Placeholder title="Courses" text="La liste de courses arrive à l'étape M5." />} />
           <Route path="/reglages" element={<Settings />} />
