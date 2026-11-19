@@ -2,7 +2,7 @@ import { supabase } from './supabase'
 
 export const CATEGORIES = ['Entrée', 'Plat', 'Accompagnement', 'Soupe', 'Salade', 'Dessert', 'Autre'] as const
 export const SEASONS = ['Printemps', 'Été', 'Automne', 'Hiver'] as const
-export const UNITS = ['g', 'kg', 'ml', 'cl', 'l', 'c. à s.', 'c. à c.', 'pièce', 'gousse', 'botte', 'tranche',
+export const UNITS = ['g', 'kg', 'ml', 'cl', 'dl', 'l', 'c. à s.', 'c. à c.', 'pièce', 'gousse', 'botte', 'tranche',
   'pincée', 'sachet', 'boîte', 'pot', 'verre', 'tasse', 'feuille', 'brin']
 
 export type Recipe = {
@@ -60,7 +60,8 @@ export const emptyDraft = (): RecipeDraft => ({
 
 /** Normalisation identique à public.f_norm côté base : minuscules, sans accents. */
 export function norm(s: string) {
-  return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
+  // œ/æ développés comme le fait unaccent() (« Œuf » = « Oeuf »), sinon l'index unique sur f_norm refuse l'insertion
+  return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/œ/g, 'oe').replace(/æ/g, 'ae').trim()
 }
 
 /** Clé de rapprochement des ingrédients : sans accents, sans casse, au singulier ("Oignons" = "oignon"). */
@@ -133,7 +134,8 @@ async function resolveIngredients(householdId: string, lines: RecipeLine[]): Pro
     }))
     const { data, error } = await supabase.from('ingredients').insert(rows).select('id, name')
     if (error) {
-      // Créé entre-temps sur l'autre téléphone : on relit
+      // Créé entre-temps sur l'autre téléphone : un seul doublon fait échouer le lot, on réessaie un par un puis on relit
+      for (const row of rows) await supabase.from('ingredients').insert(row)
       const again = await listIngredients(householdId)
       return new Map(again.map((i) => [ingKey(i.name), i.id]))
     }
@@ -170,15 +172,18 @@ export async function saveRecipe(householdId: string, userId: string, draft: Rec
   }
 
   const ids = await resolveIngredients(householdId, clean)
-  const { error: delErr } = await supabase.from('recipe_ingredients').delete().eq('recipe_id', recipeId)
-  if (delErr) throw delErr
-  if (clean.length) {
-    const { error } = await supabase.from('recipe_ingredients').insert(clean.map((l, i) => ({
-      recipe_id: recipeId, ingredient_id: ids.get(ingKey(l.name))!, quantity: l.quantity, unit: l.unit || null,
+  // Vérifié avant de supprimer les anciennes lignes : sinon un échec laisserait la recette sans ingrédients
+  const unresolved = clean.filter((l) => !ids.get(ingKey(l.name)))
+  if (unresolved.length) throw new Error(`Ingrédients non enregistrés : ${unresolved.map((l) => l.name.trim()).join(', ')}`)
+  // Suppression + insertion en une seule transaction côté base
+  const { error } = await supabase.rpc('replace_recipe_ingredients', {
+    p_recipe: recipeId,
+    p_lines: clean.map((l, i) => ({
+      ingredient_id: ids.get(ingKey(l.name)), quantity: l.quantity, unit: l.unit || null,
       note: l.note?.trim() || null, position: i,
-    })))
-    if (error) throw error
-  }
+    })),
+  })
+  if (error) throw error
   return recipeId!
 }
 

@@ -27,7 +27,8 @@ export function parseIngredientLine(raw: string): RecipeLine | null {
   for (const [k, v] of Object.entries(FRACTIONS)) s = s.replace(k, ` ${v}`).trim()
 
   let quantity: number | null = null
-  const q = s.match(/^(\d+(?:[.,]\d+)?(?:\s*\/\s*\d+)?|\d+\s+\d\.\d+)\s*/)
+  // « 1 0.5 » (issu de « 1½ ») testé en premier : sinon l'alternative simple s'arrête à « 1 »
+  const q = s.match(/^(\d+\s+\d\.\d+|\d+(?:[.,]\d+)?(?:\s*\/\s*\d+)?)\s*/)
   if (q) {
     const parts = q[1].split(/\s+/)
     quantity = parts.length === 2 && parts[1].includes('.') ? Number(parts[0]) + Number(parts[1]) : parseQty(q[1].replace(/\s/g, ''))

@@ -20,7 +20,8 @@ const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SE
 // ------------------------------------------------------------------ utilitaires
 
 function norm(s: string) {
-  return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
+  // œ/æ développés comme le fait unaccent() côté base (index unique sur f_norm)
+  return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/œ/g, 'oe').replace(/æ/g, 'ae').trim()
 }
 /** Même règle que l'app : sans accents, sans casse, au singulier. */
 function ingKey(s: string) {
@@ -209,7 +210,7 @@ async function addRecipe(ctx: Ctx, a: Record<string, unknown>) {
     yield_unit: typeof a.yield_unit === 'string' && a.yield_unit.trim() ? a.yield_unit.trim().toLowerCase() : null,
     prep_minutes: Number.isFinite(a.prep_minutes) ? Math.round(a.prep_minutes as number) : null,
     cook_minutes: Number.isFinite(a.cook_minutes) ? Math.round(a.cook_minutes as number) : null,
-    steps: strArr(a.steps).map((s) => s.replace(/^\d+[.)-]\s*/, '')),
+    steps: strArr(a.steps).map((s) => s.replace(/^\d+[.)-](?!\d)\s*/, '')),
     tags: strArr(a.tags).map((t) => t.replace(/^#/, '').toLowerCase()),
     notes: typeof a.notes === 'string' && a.notes.trim() ? a.notes.trim() : null,
     source_kind: 'claude',
@@ -229,32 +230,40 @@ async function addRecipe(ctx: Ctx, a: Record<string, unknown>) {
     const missing = new Map<string, IngredientIn>()
     for (const i of clean) if (!byKey.has(ingKey(i.name)) && !missing.has(ingKey(i.name))) missing.set(ingKey(i.name), i)
     if (missing.size) {
-      const { data: created, error: insErr } = await ctx.db.from('ingredients').insert([...missing.values()].map((i) => ({
+      const newRows = [...missing.values()].map((i) => ({
         household_id: ctx.householdId,
         name: capitalize(i.name.trim()),
         default_unit: i.unit || null,
         aisle_id: i.aisle ? aisleByName.get(i.aisle) ?? null : null,
-      }))).select('id, name')
+      }))
+      const { data: created, error: insErr } = await ctx.db.from('ingredients').insert(newRows).select('id, name')
       if (insErr) {
+        // Un seul doublon fait échouer tout le lot : on réessaie un par un, puis on relit
+        for (const row of newRows) await ctx.db.from('ingredients').insert(row)
         const { data: again } = await ctx.db.from('ingredients').select('id, name').eq('household_id', ctx.householdId)
         for (const k of again ?? []) byKey.set(ingKey(k.name), k.id)
       } else {
         for (const k of created ?? []) byKey.set(ingKey(k.name), k.id)
       }
     }
-    const { error: riErr } = await ctx.db.from('recipe_ingredients').insert(clean.map((i, pos) => ({
+    const rows = clean.map((i, pos) => ({
       recipe_id: rec.id,
       ingredient_id: byKey.get(ingKey(i.name)),
       quantity: typeof i.quantity === 'number' && Number.isFinite(i.quantity) ? i.quantity : null,
       unit: i.unit || null,
       note: i.note?.trim() || null,
       position: pos,
-    })).filter((r) => r.ingredient_id))
+    }))
+    const unresolved = clean.filter((_, pos) => !rows[pos].ingredient_id).map((i) => i.name.trim())
+    const { error: riErr } = await ctx.db.from('recipe_ingredients').insert(rows.filter((r) => r.ingredient_id))
     if (riErr) return text(`Recette créée mais ingrédients non enregistrés : ${riErr.message} — ${APP_URL}/recettes/${rec.id}`, true)
+    if (unresolved.length) {
+      return text(`Recette créée mais ingrédients non enregistrés : ${unresolved.join(', ')} — ${APP_URL}/recettes/${rec.id}`, true)
+    }
   }
 
   const { data: sameName } = await ctx.db.from('recipes').select('id').eq('household_id', ctx.householdId)
-    .ilike('name', name).neq('id', rec.id).limit(1)
+    .ilike('name', name.replace(/[\\%_]/g, '\\$&')).neq('id', rec.id).limit(1)
   const warn = sameName?.length ? '\nAttention : une autre recette porte déjà ce nom dans le carnet.' : ''
   return text(`Recette « ${name} » ajoutée au carnet (${clean.length} ingrédients). Lien : ${APP_URL}/recettes/${rec.id}${warn}`)
 }
@@ -470,6 +479,10 @@ Deno.serve(async (req) => {
   const { data: tok } = await db.from('connector_tokens').select('id, household_id, user_id')
     .eq('token_hash', await sha256Hex(token)).maybeSingle()
   if (!tok) return new Response('Not found', { status: 404 })
+  // Le lien ne vaut que tant que son créateur fait partie du foyer (il a pu le quitter depuis)
+  const { data: stillMember } = await db.from('household_members').select('user_id')
+    .eq('household_id', tok.household_id).eq('user_id', tok.user_id).maybeSingle()
+  if (!stillMember) return new Response('Not found', { status: 404 })
 
   if (req.method === 'GET' || req.method === 'DELETE') {
     return new Response('Method not allowed', { status: 405, headers: { Allow: 'POST' } })

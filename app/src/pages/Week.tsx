@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import Sheet from '../components/Sheet'
 import { currentSeason, listRecipes, listStats, norm, yieldLabel, type Recipe, type RecipeStats } from '../lib/recipes'
@@ -26,15 +26,18 @@ export default function Week() {
   const [ideasSeed, setIdeasSeed] = useState(0)
   const [error, setError] = useState('')
 
+  const reqId = useRef(0)
   const reload = useCallback(async () => {
     if (!household) return
+    const id = ++reqId.current
     try {
       const [w, r, s] = await Promise.all([listWeek(household.id, start), listRecipes(household.id, ''), listStats()])
+      if (id !== reqId.current) return // semaine changée ou rechargement plus récent entre-temps
       setItems(w)
       setRecipes(new Map(r.map((x) => [x.id, x])))
       setStats(s)
     } catch (e) {
-      setError((e as Error).message)
+      if (id === reqId.current) setError((e as Error).message)
     }
   }, [household, start])
 

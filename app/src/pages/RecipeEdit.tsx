@@ -39,6 +39,7 @@ export default function RecipeEdit() {
   const [aisles, setAisles] = useState<Aisle[]>([])
   const [paste, setPaste] = useState<string | null>(null)
   const [loading, setLoading] = useState(!!id)
+  const [loadError, setLoadError] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
@@ -89,14 +90,14 @@ export default function RecipeEdit() {
   useEffect(() => {
     if (!id) return
     void getRecipe(id).then((r) => {
-      if (!r) return
+      if (!r) { setLoadError('Recette introuvable.'); return }
       const { recipe, lines } = r
       setDraft({ ...emptyDraft(), ...recipe, lines: [] })
       setRows(lines.length ? [...lines.map(toRow), blankRow()] : [blankRow()])
       setStepsText(recipe.steps.join('\n'))
       setTagsText(recipe.tags.join(', '))
       setLoading(false)
-    })
+    }).catch((e) => setLoadError((e as Error).message))
   }, [id])
 
   const known = useMemo(() => new Map(ingredients.map((i) => [ingKey(i.name), i])), [ingredients])
@@ -154,7 +155,7 @@ export default function RecipeEdit() {
     try {
       const saved = await saveRecipe(household.id, session.user.id, {
         ...draft,
-        steps: stepsText.split(/\r?\n/).map((s) => s.replace(/^\s*\d+[.)-]\s*/, '')),
+        steps: stepsText.split(/\r?\n/).map((s) => s.replace(/^\s*\d+[.)-](?!\d)\s*/, '')),
         tags: tagsText.split(',').map((t) => t.replace(/^#/, '')),
         lines,
       }, id)
@@ -165,6 +166,8 @@ export default function RecipeEdit() {
     }
   }
 
+  // Pas de formulaire vide en cas d'échec : l'enregistrer écraserait la recette
+  if (loadError) return <section className="page"><p className="error" role="alert">{loadError}</p><Link to="/recettes">← Recettes</Link></section>
   if (loading) return <section className="page"><p className="muted">Chargement…</p></section>
 
   return (

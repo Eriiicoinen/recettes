@@ -63,15 +63,41 @@ const BROWSER_HEADERS = {
 
 type Direct = { ok: true; content: string; finalUrl: string } | { ok: false; status: number }
 
+/** Refuse les adresses internes (localhost, réseau privé, métadonnées cloud) : le serveur ne doit lire que le web public. */
+function isPublicUrl(u: URL): boolean {
+  if (!/^https?:$/.test(u.protocol)) return false
+  const h = u.hostname.toLowerCase()
+  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal')) return false
+  if (h.startsWith('[')) return false // IPv6 littérale
+  const m = h.match(/^(\d+)\.(\d+)\.\d+\.\d+$/)
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])]
+    if (a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224) return false
+  }
+  return true
+}
+
 /** Lecture directe de la page depuis le serveur Supabase. */
 async function fetchDirect(url: URL): Promise<Direct> {
   try {
-    const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(12_000), headers: BROWSER_HEADERS })
+    // Redirections suivies à la main pour vérifier chaque destination
+    let current = url
+    let res: Response
+    for (let hop = 0; ; hop++) {
+      if (!isPublicUrl(current)) return { ok: false, status: 0 }
+      res = await fetch(current, { redirect: 'manual', signal: AbortSignal.timeout(12_000), headers: BROWSER_HEADERS })
+      const location = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null
+      if (!location) break
+      await res.body?.cancel()
+      if (hop >= 5) return { ok: false, status: 0 }
+      current = new URL(location, current)
+    }
     if (!res.ok) return { ok: false, status: res.status }
     const html = await res.text()
     if (isBotChallenge(html)) return { ok: false, status: 429 }
     const page = extractFromHtml(html)
-    const finalUrl = res.url || url.href
+    const finalUrl = current.href
     if (page.jsonLd) return { ok: true, finalUrl, content: `Données structurées schema.org de la page ${finalUrl} :\n${JSON.stringify(page.jsonLd)}` }
     // Page sans données structurées et presque vide : probablement une page anti-robots
     if (page.text.length < 500) return { ok: false, status: 0 }
@@ -141,7 +167,7 @@ Deno.serve(async (req) => {
     if (url) {
       let parsed: URL
       try { parsed = new URL(url) } catch { return json({ error: 'Lien invalide.' }, 400) }
-      if (!/^https?:$/.test(parsed.protocol)) return json({ error: 'Lien invalide.' }, 400)
+      if (!isPublicUrl(parsed)) return json({ error: 'Lien invalide.' }, 400)
       const direct = await fetchDirect(parsed)
       if (direct.ok) {
         sourceUrl = direct.finalUrl
