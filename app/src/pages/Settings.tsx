@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSession } from '../lib/session'
 import { supabase, type Member } from '../lib/supabase'
+import ConnectorCard from './ConnectorCard'
 
 export default function Settings() {
   const { household, me, session } = useSession()
@@ -53,6 +54,8 @@ export default function Settings() {
           </ul>
         </div>
       </div>
+
+      <ConnectorCard householdId={household.id} />
 
       <div className="card stack">
         <div className="muted small">Connecté en tant que</div>

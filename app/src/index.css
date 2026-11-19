@@ -189,3 +189,8 @@ textarea { min-height: 0; resize: vertical; line-height: 1.5; }
 .yield-row { display: flex; gap: 6px; }
 .yield-row input:first-child { width: 72px; flex: none; }
 .yield-row input:last-child { flex: 1; min-width: 0; }
+
+/* ---------- M3 : connecteur ---------- */
+.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: .8rem; word-break: break-all; }
+.connector-new { border-top: 1px solid var(--border); padding-top: 12px; }
+.connector-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
