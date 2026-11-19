@@ -1,33 +1,33 @@
 ﻿# Recettes & Menus
 
-Carnet de recettes, menus de la semaine et liste de courses partagÃ©e entre deux tÃ©lÃ©phones.
-SpÃ©cification : [SPEC.md](SPEC.md).
+Carnet de recettes, menus de la semaine et liste de courses partagée entre deux téléphones.
+Spécification : [SPEC.md](SPEC.md).
 
 - `app/` : application web installable (PWA), React + Vite.
-- `supabase/migrations/` : schÃ©ma de la base (Postgres + RLS + temps rÃ©el).
+- `supabase/migrations/` : schéma de la base (Postgres + RLS + temps réel).
 - `legacy/menus.gs` : ancienne version Google Sheets.
 
-## DÃ©veloppement local
+## Développement local
 
 ```sh
 cd app
-cp .env.example .env.local   # puis remplir l'URL et la clÃ© Supabase
+cp .env.example .env.local   # puis remplir l'URL et la clé Supabase
 npm install
 npm run dev
 ```
 
-## Base de donnÃ©es
+## Base de données
 
 ```sh
 npx supabase login
 npx supabase link --project-ref <ref>
-npx supabase db push
+npx supabase db push --remote
 ```
 
-Dans Supabase > Authentication > Email Templates > **Magic Link**, le modÃ¨le doit contenir `{{ .Token }}`
-(l'app se connecte avec un code Ã  6 chiffres, pas avec un lien).
+Connexion par e-mail + mot de passe : dans Supabase > Authentication > Sign In / Providers > Email,
+désactiver **Confirm email**. Aucun e-mail n'est envoyé, le plan gratuit suffit.
 
-## DÃ©ploiement
+## Déploiement
 
-Chaque push sur `main` dÃ©ploie sur GitHub Pages (`.github/workflows/deploy.yml`).
-Variables du dÃ©pÃ´t Ã  dÃ©finir : `SUPABASE_URL`, `SUPABASE_ANON_KEY`.
+Chaque push sur `main` déploie sur GitHub Pages (`.github/workflows/deploy.yml`).
+Variables du dépôt à définir : `SUPABASE_URL`, `SUPABASE_ANON_KEY`.
