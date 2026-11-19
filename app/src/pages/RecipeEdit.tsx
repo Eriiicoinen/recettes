@@ -1,11 +1,12 @@
-import { BookOpen, Camera, ShoppingBasket, Sparkles, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { BookOpen, Camera, Check, Pencil, ShoppingBasket, Sparkles, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { guessAisle } from '../lib/aisleGuess'
-import { findBySource, importPhotos, importRecipe } from '../lib/importRecipe'
+import ImportProgress, { type ImportKind } from '../components/ImportProgress'
+import { findBySource, importPhotos, importRecipe, splitInput } from '../lib/importRecipe'
 import { parseIngredientLine } from '../lib/parseLine'
 import {
-  CATEGORIES, emptyDraft, getRecipe, listAisles, listIngredients, ingKey, parseQty, saveRecipe, SEASONS, UNITS,
+  CATEGORIES, emptyDraft, formatDuration, getRecipe, listAisles, listIngredients, ingKey, parseQty, saveRecipe, SEASONS, UNITS, yieldLabel,
   type Aisle, type Ingredient, type RecipeDraft, type RecipeLine,
 } from '../lib/recipes'
 import { removeRecipePhoto, setRecipePhoto } from '../lib/photos'
@@ -51,6 +52,9 @@ export default function RecipeEdit() {
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState('')
   const [imported, setImported] = useState(false)
+  // Après un import : aperçu de la fiche ; le formulaire complet seulement sur « Modifier »
+  const [reviewing, setReviewing] = useState(false)
+  const [importKind, setImportKind] = useState<ImportKind>('url')
   const [duplicate, setDuplicate] = useState<{ id: string; name: string } | null>(null)
   const autoImportDone = useRef(false)
 
@@ -62,6 +66,7 @@ export default function RecipeEdit() {
 
   async function runImport(input: string | File[] = importInput) {
     if (!household || (typeof input === 'string' ? !input.trim() : !input.length)) return
+    setImportKind(typeof input === 'string' ? (splitInput(input).url ? 'url' : 'text') : 'photo')
     setImporting(true)
     setImportError('')
     setDuplicate(null)
@@ -73,6 +78,8 @@ export default function RecipeEdit() {
       setStepsText(d.steps.join('\n'))
       setTagsText(d.tags.join(', '))
       setImported(true)
+      setReviewing(true)
+      window.scrollTo(0, 0)
       setDuplicate(await findBySource(household.id, d.source_url))
     } catch (e) {
       setImportError((e as Error).message)
@@ -178,11 +185,58 @@ export default function RecipeEdit() {
   if (loadError) return <section className="page"><p className="error" role="alert">{loadError}</p><Link to="/recettes">← Recettes</Link></section>
   if (loading) return <section className="page"><p className="muted">Chargement…</p></section>
 
+  const saveBar = (secondary: ReactNode) => (
+    <div className="save-bar">
+      {secondary}
+      <button className="btn primary" disabled={saving || !draft.name.trim()}>{saving ? 'Enregistrement…' : 'Enregistrer'}</button>
+    </div>
+  )
+
+  if (reviewing) {
+    const lines = rows.filter((r) => r.name.trim())
+    const steps = stepsText.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)
+    const total = (draft.prep_minutes ?? 0) + (draft.cook_minutes ?? 0)
+    return (
+      <form className="page" onSubmit={submit}>
+        <div className="row between">
+          <button type="button" className="btn ghost back" onClick={() => navigate(-1)}>Annuler</button>
+        </div>
+        <div className="import-done inline-icon"><Check size={18} /> Recette importée : vérifie-la puis enregistre.</div>
+        {duplicate && (
+          <p className="warn small" style={{ margin: 0 }}>
+            Tu as déjà cette recette : <Link to={`/recettes/${duplicate.id}`}>{duplicate.name}</Link>
+          </p>
+        )}
+        {error && <p className="error" role="alert">{error}</p>}
+        <header className="stack" style={{ gap: 6 }}>
+          <h1 style={{ margin: 0 }}>{draft.name}</h1>
+          <div className="muted small">
+            {[draft.is_simple ? 'Repas sans recette' : draft.category, `Pour ${yieldLabel(draft.servings, draft.yield_unit)}`,
+              total ? formatDuration(total) : null, draft.seasons.length ? draft.seasons.join(', ') : null].filter(Boolean).join(' · ')}
+          </div>
+        </header>
+        <div className="card stack">
+          <h2>{draft.is_simple ? 'À acheter' : 'Ingrédients'} <span className="muted small">{lines.length}</span></h2>
+          <ul className="preview-list">
+            {lines.map((r) => <li key={r.key}><strong>{[r.qty, r.unit].filter(Boolean).join(' ')}</strong> {r.name}</li>)}
+          </ul>
+        </div>
+        {steps.length > 0 && (
+          <div className="card stack">
+            <h2>Étapes</h2>
+            <ol className="preview-steps">{steps.map((x, i) => <li key={i}>{x}</li>)}</ol>
+          </div>
+        )}
+        {draft.notes && <div className="card"><p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{draft.notes}</p></div>}
+        {saveBar(<button type="button" className="btn" onClick={() => setReviewing(false)}><Pencil size={16} /> Modifier</button>)}
+      </form>
+    )
+  }
+
   return (
     <form className="page" onSubmit={submit}>
       <div className="row between">
         <button type="button" className="btn ghost back" onClick={() => navigate(-1)}>Annuler</button>
-        <button className="btn primary" disabled={saving || !draft.name.trim()}>{saving ? 'Enregistrement…' : 'Enregistrer'}</button>
       </div>
       <h1 style={{ margin: 0 }}>{id ? 'Modifier la recette' : 'Nouvelle recette'}</h1>
       {error && <p className="error" role="alert">{error}</p>}
@@ -192,28 +246,22 @@ export default function RecipeEdit() {
           <h2 className="inline-icon"><Sparkles size={20} /> Importer</h2>
           <textarea rows={3} value={importInput} onChange={(e) => setImportInput(e.target.value)} disabled={importing}
             placeholder="Colle le lien d'une recette (Marmiton, 750g, un blog…) ou le texte complet d'une recette" />
-          <button type="button" className="btn primary" onClick={() => runImport()} disabled={importing || !importInput.trim()}>
-            {importing ? 'Lecture de la recette…' : 'Importer'}
-          </button>
-          <label className={importing ? 'btn disabled' : 'btn'} aria-disabled={importing}>
-            <Camera size={18} /> Depuis une photo (livre, fiche…)
-            <input type="file" accept="image/*" multiple hidden disabled={importing}
-              onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ''; void runImport(f) }} />
-          </label>
-          {importing && <p className="muted small" style={{ margin: 0 }}>Ça prend 10 à 30 secondes.</p>}
+          {importing ? <ImportProgress kind={importKind} /> : (
+            <>
+              <button type="button" className="btn primary" onClick={() => runImport()} disabled={!importInput.trim()}>Importer</button>
+              <label className="btn">
+                <Camera size={18} /> Depuis une photo (livre, fiche…)
+                <input type="file" accept="image/*" multiple hidden
+                  onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ''; void runImport(f) }} />
+              </label>
+            </>
+          )}
           {importError && <p className="error" role="alert" style={{ margin: 0 }}>{importError}</p>}
           <p className="muted small" style={{ margin: 0 }}>Ou remplis la fiche à la main ci-dessous.</p>
         </div>
       )}
-      {imported && (
-        <div className="card import-done">
-          <strong>Recette importée.</strong> Vérifie la fiche, puis touche <strong>Enregistrer</strong>.
-          {duplicate && (
-            <p style={{ margin: '8px 0 0' }}>
-              Tu as déjà cette recette : <Link to={`/recettes/${duplicate.id}`}>{duplicate.name}</Link>
-            </p>
-          )}
-        </div>
+      {imported && duplicate && (
+        <p className="warn small" style={{ margin: 0 }}>Tu as déjà cette recette : <Link to={`/recettes/${duplicate.id}`}>{duplicate.name}</Link></p>
       )}
 
       <div className="segmented" role="group" aria-label="Type">
@@ -389,7 +437,7 @@ export default function RecipeEdit() {
         <input type="url" inputMode="url" value={draft.source_url ?? ''} onChange={(e) => set('source_url', e.target.value)} placeholder="https://…" />
       </label>
 
-      <button className="btn primary" disabled={saving || !draft.name.trim()}>{saving ? 'Enregistrement…' : 'Enregistrer'}</button>
+      {saveBar(<button type="button" className="btn ghost" onClick={() => navigate(-1)}>Annuler</button>)}
     </form>
   )
 }
