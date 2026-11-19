@@ -1,10 +1,11 @@
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Share2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSession } from '../lib/session'
 import { supabase, type Member } from '../lib/supabase'
 import { useRealtime } from '../lib/realtime'
 import NotificationsCard from '../components/NotificationsCard'
+import { inviteLink } from '../lib/launch'
 import { disablePush } from '../lib/push'
 import ConnectorCard from './ConnectorCard'
 
@@ -34,6 +35,28 @@ export default function Settings() {
 
   if (!household) return null
 
+  const [invited, setInvited] = useState('')
+  async function shareInvite() {
+    const url = inviteLink(household!.invite_code)
+    const text = `Rejoins notre carnet de recettes « ${household!.name} » : ouvre ce lien, crée ton compte, le code ${household!.invite_code} sera déjà rempli.`
+    try {
+      if (navigator.share) await navigator.share({ title: 'Recettes & Menus', text, url })
+      else { await navigator.clipboard.writeText(`${text}\n${url}`); setInvited('Lien copié') }
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') {
+        try { await navigator.clipboard.writeText(`${text}\n${url}`); setInvited('Lien copié') } catch { setInvited(url) }
+      }
+    }
+  }
+
+  const [newPassword, setNewPassword] = useState('')
+  const [pwMsg, setPwMsg] = useState('')
+  async function changePassword() {
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
+    setPwMsg(error ? error.message : 'Mot de passe changé.')
+    if (!error) setNewPassword('')
+  }
+
   async function copy() {
     try {
       await navigator.clipboard.writeText(household!.invite_code)
@@ -58,6 +81,8 @@ export default function Settings() {
           </div>
           <button className="btn" onClick={copy}>{copied ? 'Copié ✓' : 'Copier'}</button>
         </div>
+        <button className="btn soft" onClick={shareInvite}><Share2 size={18} /> Inviter par un lien</button>
+        {invited && <p className="muted small" role="status" style={{ margin: 0 }}>{invited}</p>}
         <div>
           <div className="muted small">Membres</div>
           <ul className="plain">
@@ -94,6 +119,12 @@ export default function Settings() {
       <div className="card stack">
         <div className="muted small">Connecté en tant que</div>
         <div>{session?.user.email}</div>
+        <form className="row" onSubmit={(e) => { e.preventDefault(); void changePassword() }}>
+          <input type="password" minLength={8} required autoComplete="new-password" placeholder="Nouveau mot de passe"
+            value={newPassword} onChange={(e) => { setNewPassword(e.target.value); setPwMsg('') }} style={{ flex: 1, minWidth: 0 }} aria-label="Nouveau mot de passe" />
+          <button className="btn" disabled={newPassword.length < 8}>Changer</button>
+        </form>
+        {pwMsg && <p className="muted small" role="status" style={{ margin: 0 }}>{pwMsg}</p>}
         <button className="btn ghost danger" onClick={() => { void disablePush().catch(() => {}).finally(() => supabase.auth.signOut()) }}>Se déconnecter</button>
       </div>
     </section>

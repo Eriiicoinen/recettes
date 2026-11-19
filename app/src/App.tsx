@@ -1,11 +1,13 @@
 import { BookOpen, CalendarDays, ShoppingCart, Sun } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { HashRouter, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom'
 import { SessionProvider, useSession } from './lib/session'
 import { configMissing } from './lib/supabase'
 import Ideas from './pages/Ideas'
 import Login from './pages/Login'
+import { isRecovery } from './lib/launch'
 import Onboarding from './pages/Onboarding'
+import ResetPassword from './pages/ResetPassword'
 import RecipeDetail from './pages/RecipeDetail'
 import RecipeEdit from './pages/RecipeEdit'
 import RecipeList from './pages/RecipeList'
@@ -46,12 +48,14 @@ function ShareHandler() {
 
 function Shell() {
   const { session, household, loading } = useSession()
+  const [recovering, setRecovering] = useState(isRecovery)
 
   if (configMissing) {
     return <main className="center-page"><p className="error">Configuration Supabase manquante (.env.local).</p></main>
   }
   if (loading) return <main className="center-page"><p className="muted">Chargement…</p></main>
   if (!session) return <Login />
+  if (recovering) return <ResetPassword onDone={() => setRecovering(false)} />
   if (!household) return <Onboarding />
 
   return (

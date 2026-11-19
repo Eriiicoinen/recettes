@@ -523,3 +523,10 @@ h2.inline-icon, .inline-icon { display: inline-flex; align-items: center; gap: 8
 .sheet-section { font-size: .78rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin-top: 6px; }
 .aisle-title { font-family: var(--font-body); font-weight: 700; letter-spacing: .06em; }
 .wadd.more { min-height: 28px; border-style: dotted; opacity: .7; }
+
+/* ---------- transitions entre écrans ---------- */
+.content > .page, .center-page { animation: page-in .22s ease-out; }
+@keyframes page-in { from { opacity: 0; transform: translateY(6px); } }
+.sheet { animation: sheet-in .22s cubic-bezier(.2, .8, .2, 1); }
+@keyframes sheet-in { from { transform: translateY(24px); opacity: .6; } }
+@media (prefers-reduced-motion: reduce) { .content > .page, .center-page, .sheet { animation: none; } }
