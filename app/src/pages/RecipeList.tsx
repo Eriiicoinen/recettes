@@ -46,6 +46,8 @@ export default function RecipeList() {
     const t = setTimeout(load, query ? 200 : 0)
     const ch = supabase.channel('recipes-list')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'recipes', filter: `household_id=eq.${household.id}` }, () => void load())
+      // Les suppressions ne peuvent pas être filtrées côté temps réel : écoutées sans filtre
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'recipes' }, () => void load())
       .subscribe()
     return () => { clearTimeout(t); void supabase.removeChannel(ch) }
   }, [household, query])

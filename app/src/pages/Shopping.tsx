@@ -30,6 +30,8 @@ export default function Shopping() {
   const [error, setError] = useState('')
   const itemsRef = useRef<ShoppingItem[] | null>(null)
   itemsRef.current = items
+  // Numéro du dernier chargement : un résultat dépassé (autre semaine, modification locale depuis) est ignoré
+  const loadSeq = useRef(0)
 
   const persist = useCallback((next: Partial<Cache>) => {
     if (!cacheKey) return
@@ -40,6 +42,7 @@ export default function Shopping() {
   /** withSync : recalcule la liste à partir du menu (sinon simple relecture). */
   const load = useCallback(async (withSync: boolean) => {
     if (!household) return
+    const n = ++loadSeq.current
     try {
       await flush()
       const miss = withSync ? await syncList(household.id, week, week === thisWeek) : null
@@ -50,6 +53,7 @@ export default function Shopping() {
           .then(({ data }) => (data ?? []) as Member[]),
         listIngredients(household.id),
       ])
+      if (n !== loadSeq.current) return
       setItems(list)
       setAisles(a)
       setMembers(m)
@@ -58,6 +62,7 @@ export default function Shopping() {
       setError('')
       persist({ items: list, aisles: a, members: m, ...(miss ? { missing: miss } : {}) })
     } catch (e) {
+      if (n !== loadSeq.current) return
       const cached = cacheGet<Cache>(cacheKey)
       if (cached && itemsRef.current === null) {
         setItems(cached.items)
@@ -80,11 +85,23 @@ export default function Shopping() {
     setMissing(cached?.missing ?? [])
     void load(true)
     if (!household) return
+    // Regroupe les rafales d'événements (une synchro modifie plusieurs lignes) en un seul rechargement
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let wantSync = false
+    const schedule = (withSync: boolean) => {
+      wantSync ||= withSync
+      clearTimeout(timer)
+      timer = setTimeout(() => { const s = wantSync; wantSync = false; void load(s) }, 300)
+    }
+    const filter = `household_id=eq.${household.id}`
+    // Les suppressions ne peuvent pas être filtrées par foyer côté temps réel : on les écoute sans filtre
     const ch = supabase.channel(`shopping-${week}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'week_items', filter: `household_id=eq.${household.id}` }, () => void load(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'shopping_items', filter: `household_id=eq.${household.id}` }, () => void load(false))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'week_items', filter }, () => schedule(true))
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'week_items' }, () => schedule(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shopping_items', filter }, () => schedule(false))
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'shopping_items' }, () => schedule(false))
       .subscribe()
-    return () => { void supabase.removeChannel(ch) }
+    return () => { clearTimeout(timer); void supabase.removeChannel(ch) }
   }, [household, week, cacheKey, load])
 
   useEffect(() => {
@@ -99,6 +116,7 @@ export default function Shopping() {
   // ------------------------------------------------------------------ actions (optimistes, avec file hors ligne)
 
   function patchLocal(id: string, patch: Partial<ShoppingItem>) {
+    loadSeq.current++ // un chargement en cours écraserait cette modification
     setItems((list) => {
       const next = (list ?? []).map((i) => (i.id === id ? { ...i, ...patch } : i))
       persist({ items: next })
@@ -137,6 +155,7 @@ export default function Shopping() {
 
   function remove(i: ShoppingItem) {
     setSelected(null)
+    loadSeq.current++
     setItems((list) => {
       const next = (list ?? []).filter((x) => x.id !== i.id)
       persist({ items: next })
@@ -157,6 +176,7 @@ export default function Shopping() {
       checked: false, checked_by: null, checked_at: null, created_at: new Date().toISOString(),
     }
     setNewLabel('')
+    loadSeq.current++
     setItems((list) => {
       const next = [...(list ?? []), row]
       persist({ items: next })
@@ -191,8 +211,9 @@ export default function Shopping() {
 
   const goWeek = (s: string) => setParams(s === thisWeek ? {} : { s }, { replace: true })
 
-  const Row = ({ i }: { i: ShoppingItem }) => (
-    <li className={i.checked ? 'shop-row done' : 'shop-row'}>
+  // Fonction de rendu (et non composant défini ici) : sinon chaque rendu démonte et recrée toutes les lignes
+  const row = (i: ShoppingItem) => (
+    <li key={i.id} className={i.checked ? 'shop-row done' : 'shop-row'}>
       <button className="shop-check" onClick={() => toggle(i)} aria-pressed={i.checked}>
         <span className="box" aria-hidden>{i.checked ? '✓' : ''}</span>
         <span className="shop-main">
@@ -244,21 +265,21 @@ export default function Shopping() {
           {groups.map((g) => (
             <div key={g.name} className="aisle">
               <h2 className="aisle-title">{g.name} <span className="muted small">{g.list.length}</span></h2>
-              <ul className="shop-list">{g.list.map((i) => <Row key={i.id} i={i} />)}</ul>
+              <ul className="shop-list">{g.list.map(row)}</ul>
             </div>
           ))}
 
           {staples.length > 0 && (
             <details className="aisle collapsible">
               <summary><h2 className="aisle-title">🧂 Placard, à vérifier <span className="muted small">{staples.length}</span></h2></summary>
-              <ul className="shop-list">{staples.map((i) => <Row key={i.id} i={i} />)}</ul>
+              <ul className="shop-list">{staples.map(row)}</ul>
             </details>
           )}
 
           {done.length > 0 && (
             <details className="aisle collapsible">
               <summary><h2 className="aisle-title">✓ Dans le chariot <span className="muted small">{done.length}</span></h2></summary>
-              <ul className="shop-list">{done.map((i) => <Row key={i.id} i={i} />)}</ul>
+              <ul className="shop-list">{done.map(row)}</ul>
             </details>
           )}
 

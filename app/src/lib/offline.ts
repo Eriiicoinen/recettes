@@ -1,18 +1,23 @@
 import { supabase } from './supabase'
 
 // File d'attente des modifications faites sans réseau (au magasin), rejouée au retour de la connexion.
+// Chaque modification passe par la file (mémorisée avant l'envoi) et les envois se font un par un, dans l'ordre.
 
-type Op =
+type Op = (
   | { kind: 'update'; table: string; id: string; patch: Record<string, unknown> }
   | { kind: 'insert'; table: string; row: Record<string, unknown> }
   | { kind: 'delete'; table: string; id: string }
+) & { qid?: string }
 
 const KEY = 'recettes.queue'
 
-function readQueue(): Op[] {
+// Copie en mémoire : la file fonctionne même si le stockage local est indisponible
+let queue: Op[] = (() => {
   try { return JSON.parse(localStorage.getItem(KEY) ?? '[]') as Op[] } catch { return [] }
-}
+})()
+
 function writeQueue(q: Op[]) {
+  queue = q
   try { localStorage.setItem(KEY, JSON.stringify(q)) } catch { /* stockage indisponible */ }
   listeners.forEach((l) => l(q.length))
 }
@@ -20,48 +25,74 @@ function writeQueue(q: Op[]) {
 const listeners = new Set<(pending: number) => void>()
 export function onQueueChange(fn: (pending: number) => void) {
   listeners.add(fn)
-  fn(readQueue().length)
+  fn(queue.length)
   return () => { listeners.delete(fn) }
 }
 
-function isNetworkError(message: string | undefined) {
-  return !navigator.onLine || /fetch|network|load failed|timeout/i.test(message ?? '')
+type ExecError = { message: string; status?: number }
+
+/** Réseau absent, serveur indisponible ou session à rafraîchir : on réessaiera plus tard. */
+function isRetriable(error: ExecError) {
+  return !navigator.onLine || /fetch|network|load failed|timeout/i.test(error.message)
+    || (error.status ?? 0) >= 500 || error.status === 401
 }
 
-async function exec(op: Op) {
-  const t = supabase.from(op.table)
-  const { error } = op.kind === 'update' ? await t.update(op.patch).eq('id', op.id)
-    : op.kind === 'insert' ? await t.insert(op.row)
-    : await t.delete().eq('id', op.id)
-  return error
+async function exec(op: Op): Promise<ExecError | null> {
+  try {
+    const t = supabase.from(op.table)
+    const { error, status } = op.kind === 'update' ? await t.update(op.patch).eq('id', op.id)
+      : op.kind === 'insert' ? await t.insert(op.row)
+      : await t.delete().eq('id', op.id)
+    return error ? { message: error.message, status } : null
+  } catch (e) {
+    return { message: (e as Error).message }
+  }
 }
 
-/** Exécute tout de suite si possible ; sinon met en file d'attente. Renvoie false si mis en attente. */
-export async function run(op: Op): Promise<boolean> {
-  if (readQueue().length) { writeQueue([...readQueue(), op]); void flush(); return false } // garder l'ordre
-  const error = await exec(op).catch((e: Error) => ({ message: e.message }))
-  if (!error) return true
-  if (isNetworkError(error.message)) { writeQueue([...readQueue(), op]); return false }
-  throw new Error(error.message)
+const waiting = new Set<string>()
+const failures = new Map<string, string>()
+
+async function drain() {
+  for (;;) {
+    const op = queue[0]
+    if (!op || !navigator.onLine) return
+    const error = await exec(op)
+    if (error && isRetriable(error)) return // toujours hors ligne : on réessaiera
+    // Erreur définitive (ex. article supprimé entre-temps) : on abandonne cette opération
+    if (error && op.qid && waiting.has(op.qid)) failures.set(op.qid, error.message)
+    writeQueue(queue.filter((o) => o !== op))
+  }
 }
 
-let current: Promise<void> | null = null
-/** Rejoue la file ; si un envoi est déjà en cours, renvoie la même promesse (on peut l'attendre avant de recharger). */
+let tail: Promise<void> = Promise.resolve()
+/** Rejoue la file (un seul envoi à la fois) ; la promesse se résout quand ce passage est terminé. */
 export function flush(): Promise<void> {
-  if (current) return current
-  current = (async () => {
-    let q = readQueue()
-    while (q.length) {
-      const error = await exec(q[0]).catch((e: Error) => ({ message: e.message }))
-      if (error && isNetworkError(error.message)) break // toujours hors ligne
-      // Erreur définitive (ex. article supprimé entre-temps) : on abandonne cette opération
-      q = q.slice(1)
-      writeQueue(q)
-    }
-  })().finally(() => { current = null })
-  return current
+  tail = tail.then(drain)
+  return tail
 }
-export const pendingCount = () => readQueue().length
+
+/** Envoie tout de suite si possible ; sinon laisse en file d'attente. Renvoie false si mis en attente. */
+export async function run(op: Op): Promise<boolean> {
+  const qid = crypto.randomUUID()
+  waiting.add(qid)
+  try {
+    writeQueue([...queue, { ...op, qid }])
+    await flush()
+    if (queue.some((o) => o.qid === qid)) return false
+    const message = failures.get(qid)
+    if (message !== undefined) throw new Error(message)
+    return true
+  } finally {
+    waiting.delete(qid)
+    failures.delete(qid)
+  }
+}
+export const pendingCount = () => queue.length
+
+/** À la déconnexion : les modifications en attente appartiennent à l'utilisateur qui part. */
+export function clearQueue() {
+  writeQueue([])
+}
 
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => void flush())

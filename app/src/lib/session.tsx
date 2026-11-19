@@ -1,5 +1,6 @@
 import type { Session } from '@supabase/supabase-js'
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { clearQueue } from './offline'
 import { supabase, type Household, type Member } from './supabase'
 
 type Ctx = {
@@ -59,7 +60,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await reloadHousehold()
       setLoading(false)
     })
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      // File hors ligne propre à chaque utilisateur : vidée à la déconnexion
+      if (event === 'SIGNED_OUT') clearQueue()
       setSession(s)
       void reloadHousehold()
     })

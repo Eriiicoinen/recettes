@@ -61,6 +61,7 @@ export default function RecipeDetail() {
     void load()
     const ch = supabase.channel(`recipe-${id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'recipes', filter: `id=eq.${id}` }, () => void load())
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'recipes' }, (p) => { if ((p.old as { id?: string }).id === id) void load() })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'recipe_ingredients', filter: `recipe_id=eq.${id}` }, () => void load())
       .subscribe()
     return () => { void supabase.removeChannel(ch) }

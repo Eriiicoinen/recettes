@@ -378,11 +378,12 @@ async function getShoppingList(ctx: Ctx, a: Record<string, unknown>) {
     p_household: ctx.householdId, p_week: week, p_carry_manual: week === resolveWeek('this'),
   })
   if (syncErr) return text(`Calcul impossible : ${syncErr.message}`, true)
-  const [{ data: items }, { data: aisles }] = await Promise.all([
+  const [{ data: items, error: itemsErr }, { data: aisles, error: aislesErr }] = await Promise.all([
     ctx.db.from('shopping_items').select('label, quantity, unit, aisle_id, sources, is_staple, hidden, checked, origin')
       .eq('household_id', ctx.householdId).eq('week_start', week).order('label'),
     ctx.db.from('aisles').select('id, name, position').eq('household_id', ctx.householdId).order('position'),
   ])
+  if (itemsErr || aislesErr) return text(`Lecture impossible : ${(itemsErr ?? aislesErr)!.message}`, true)
   type It = { label: string; quantity: number | null; unit: string | null; aisle_id: string | null; sources: string[]; is_staple: boolean; hidden: boolean; checked: boolean; origin: string }
   const list = ((items ?? []) as It[]).filter((i) => !i.hidden)
   if (!list.length) return text(`Liste vide pour la semaine du ${week} : ajoute des recettes au menu (add_to_week).`)
@@ -414,7 +415,7 @@ async function addShoppingItem(ctx: Ctx, a: Record<string, unknown>) {
     household_id: ctx.householdId, week_start: week, origin: 'manual', label: capitalize(l), aisle_id: aisleOf.get(ingKey(l)) ?? other,
   })))
   if (error) return text(`Ajout impossible : ${error.message}`, true)
-  return text(`Ajouté à la liste de courses : ${labels.join(', ')}. Liste : ${APP_URL}/courses`)
+  return text(`Ajouté à la liste de courses : ${labels.join(', ')}. Liste : ${APP_URL}/courses${week === resolveWeek('this') ? '' : `?s=${week}`}`)
 }
 
 // ------------------------------------------------------------------ JSON-RPC

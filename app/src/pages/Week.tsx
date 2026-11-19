@@ -44,6 +44,8 @@ export default function Week() {
     if (!household) return
     const ch = supabase.channel(`week-${start}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'week_items', filter: `household_id=eq.${household.id}` }, () => void reload())
+      // Les suppressions ne peuvent pas être filtrées côté temps réel : écoutées sans filtre
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'week_items' }, () => void reload())
       .subscribe()
     return () => { void supabase.removeChannel(ch) }
   }, [household, start, reload])
