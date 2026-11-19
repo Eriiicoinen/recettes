@@ -22,6 +22,9 @@ export default function Settings() {
   }
   const [members, setMembers] = useState<Member[]>([])
   const [copied, setCopied] = useState(false)
+  const [invited, setInvited] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [pwMsg, setPwMsg] = useState('')
 
   const loadMembers = useCallback(() => {
     if (!household) return
@@ -35,7 +38,6 @@ export default function Settings() {
 
   if (!household) return null
 
-  const [invited, setInvited] = useState('')
   async function shareInvite() {
     const url = inviteLink(household!.invite_code)
     const text = `Rejoins notre carnet de recettes « ${household!.name} » : ouvre ce lien, crée ton compte, le code ${household!.invite_code} sera déjà rempli.`
@@ -49,8 +51,6 @@ export default function Settings() {
     }
   }
 
-  const [newPassword, setNewPassword] = useState('')
-  const [pwMsg, setPwMsg] = useState('')
   async function changePassword() {
     const { error } = await supabase.auth.updateUser({ password: newPassword })
     setPwMsg(error ? error.message : 'Mot de passe changé.')
