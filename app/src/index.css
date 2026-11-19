@@ -86,7 +86,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 
 .segmented { display: grid; grid-template-columns: 1fr 1fr; background: var(--accent-soft); border-radius: 12px; padding: 4px; }
 .segmented button { min-height: 40px; border: 0; border-radius: 9px; background: transparent; font-weight: 600; cursor: pointer; }
-.segmented button[aria-selected="true"] { background: var(--surface); box-shadow: 0 1px 3px rgb(0 0 0 / .12); }
+.segmented button[aria-selected="true"], .segmented button[aria-pressed="true"] { background: var(--surface); box-shadow: 0 1px 3px rgb(0 0 0 / .12); }
 
 .tabbar {
   position: fixed; inset: auto 0 0 0; z-index: 10;
@@ -309,3 +309,4 @@ textarea { min-height: 0; resize: vertical; line-height: 1.5; }
 @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.02); } }
 @media (prefers-reduced-motion: reduce) { .timer.done { animation: none; } }
 .btn.disabled { opacity: .6; pointer-events: none; }
+.segmented button { color: inherit; font: inherit; font-weight: 600; }

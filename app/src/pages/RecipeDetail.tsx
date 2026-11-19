@@ -117,7 +117,7 @@ export default function RecipeDetail() {
       <header className="stack" style={{ gap: 6 }}>
         <h1 style={{ margin: 0 }}>{recipe.name}</h1>
         <div className="muted small">
-          {[recipe.category, recipe.seasons.length ? recipe.seasons.join(', ') : "Toute l'année",
+          {[recipe.is_simple ? '🧺 Repas sans recette' : recipe.category, recipe.seasons.length ? recipe.seasons.join(', ') : "Toute l'année",
             recipe.rating ? '★'.repeat(recipe.rating) : null].filter(Boolean).join(' · ')}
         </div>
         <div className="row wrap small">
@@ -131,9 +131,11 @@ export default function RecipeDetail() {
 
       <div className="grid-2">
         <button className="btn primary" onClick={openPlan}>📅 Ajouter à la semaine</button>
-        <button className="btn" onClick={() => setCooking(!cooking)}>
-          {cooking ? 'Quitter le mode cuisine' : '🍳 Mode cuisine'}
-        </button>
+        {!(recipe.is_simple && recipe.steps.length === 0) && (
+          <button className="btn" onClick={() => setCooking(!cooking)}>
+            {cooking ? 'Quitter le mode cuisine' : '🍳 Mode cuisine'}
+          </button>
+        )}
       </div>
       {planned && <p className="muted small" role="status" style={{ margin: 0 }}>✓ {planned}</p>}
       {planOpen && (
@@ -152,7 +154,7 @@ export default function RecipeDetail() {
 
       <div className="card stack">
         <div className="row between">
-          <h2>Ingrédients</h2>
+          <h2>{recipe.is_simple ? 'À acheter' : 'Ingrédients'}</h2>
           <div className="stepper" aria-label="Quantité">
             <button onClick={() => setServings(Math.max(1, servings - 1))} aria-label="Moins de parts">−</button>
             <span>{yieldLabel(servings, recipe.yield_unit)}</span>

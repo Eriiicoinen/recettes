@@ -8,12 +8,13 @@ import {
 import { useSession } from '../lib/session'
 import { supabase } from '../lib/supabase'
 
-type Chip = 'favoris' | 'saison' | 'rapide' | 'oubliees'
+type Chip = 'favoris' | 'saison' | 'rapide' | 'oubliees' | 'simples'
 const CHIPS: { id: Chip; label: string }[] = [
   { id: 'favoris', label: '♥ Favoris' },
   { id: 'saison', label: `De saison (${currentSeason()})` },
   { id: 'rapide', label: '< 30 min' },
   { id: 'oubliees', label: 'Pas faites depuis longtemps' },
+  { id: 'simples', label: '🧺 Sans recette' },
 ]
 
 export default function RecipeList() {
@@ -60,6 +61,7 @@ export default function RecipeList() {
     let out = recipes.filter((r) => {
       if (category && r.category !== category) return false
       if (chips.has('favoris') && !r.is_favorite) return false
+      if (chips.has('simples') && !r.is_simple) return false
       if (chips.has('saison') && r.seasons.length && !r.seasons.includes(season)) return false
       if (chips.has('rapide') && ((r.prep_minutes ?? 0) + (r.cook_minutes ?? 0) > 30 || !(r.prep_minutes || r.cook_minutes))) return false
       if (chips.has('oubliees')) {
@@ -135,7 +137,7 @@ export default function RecipeList() {
                     <div className="recipe-card-main">
                       <div className="recipe-name">{r.is_favorite && <span className="fav" aria-label="Favori">♥ </span>}{r.name}</div>
                       <div className="muted small">
-                        {[r.category, total ? formatDuration(total) : null, r.rating ? '★'.repeat(r.rating) : null].filter(Boolean).join(' · ')}
+                        {[r.is_simple ? '🧺 Sans recette' : r.category, total ? formatDuration(total) : null, r.rating ? '★'.repeat(r.rating) : null].filter(Boolean).join(' · ')}
                       </div>
                     </div>
                     <div className="muted small recipe-last">{relativeDate(s?.last_cooked ?? null)}</div>

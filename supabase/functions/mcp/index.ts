@@ -53,12 +53,13 @@ async function toolDefinitions(ctx: Ctx) {
         "Enregistre une recette dans le carnet de recettes familial (application Recettes & Menus), partagé entre les téléphones du foyer. " +
         "À utiliser quand l'utilisateur demande d'ajouter, sauvegarder ou garder une recette (« ajoute-la à mon carnet »). " +
         "Rédige tout en français. Ingrédients : un par entrée, nom au singulier avec majuscule (« Oignon », « Huile d'olive »), quantité numérique, unité métrique. " +
+        "Pour un repas sans vraie recette (raclette, fondue, apéro dînatoire, plateau de fruits de mer…), mets steps à [] : il est enregistré comme « repas sans recette », juste une liste de courses. " +
         "servings + yield_unit décrivent le rendement : 4 personnes → servings 4, yield_unit null ; 20 cookies → servings 20, yield_unit « cookies ». " +
         "Renvoie le lien vers la recette dans l'application.",
       inputSchema: {
         type: 'object',
         additionalProperties: false,
-        required: ['name', 'category', 'servings', 'ingredients', 'steps'],
+        required: ['name', 'category', 'servings', 'ingredients'],
         properties: {
           name: { type: 'string', description: 'Nom de la recette' },
           category: { type: 'string', enum: CATEGORIES },
@@ -211,6 +212,7 @@ async function addRecipe(ctx: Ctx, a: Record<string, unknown>) {
     prep_minutes: Number.isFinite(a.prep_minutes) ? Math.round(a.prep_minutes as number) : null,
     cook_minutes: Number.isFinite(a.cook_minutes) ? Math.round(a.cook_minutes as number) : null,
     steps: strArr(a.steps).map((s) => s.replace(/^\d+[.)-](?!\d)\s*/, '')),
+    is_simple: strArr(a.steps).length === 0,
     tags: strArr(a.tags).map((t) => t.replace(/^#/, '').toLowerCase()),
     notes: typeof a.notes === 'string' && a.notes.trim() ? a.notes.trim() : null,
     source_kind: 'claude',

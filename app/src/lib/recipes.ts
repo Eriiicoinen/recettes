@@ -21,6 +21,8 @@ export type Recipe = {
   notes: string | null
   tags: string[]
   is_favorite: boolean
+  /** Repas sans recette : juste une liste de courses (raclette, fondue…) */
+  is_simple: boolean
   source_kind: string
   source_url: string | null
   photo_url: string | null
@@ -54,7 +56,7 @@ export type RecipeDraft = Omit<Recipe, 'id' | 'household_id' | 'created_at' | 'u
 
 export const emptyDraft = (): RecipeDraft => ({
   name: '', category: 'Plat', seasons: [], rating: null, servings: 4, yield_unit: null, prep_minutes: null, cook_minutes: null,
-  steps: [], notes: null, tags: [], is_favorite: false, source_kind: 'manual', source_url: null, photo_url: null,
+  steps: [], notes: null, tags: [], is_favorite: false, is_simple: false, source_kind: 'manual', source_url: null, photo_url: null,
   lines: [],
 })
 
@@ -152,6 +154,7 @@ export async function saveRecipe(householdId: string, userId: string, draft: Rec
     category: fields.category, seasons: fields.seasons, rating: fields.rating, servings: fields.servings,
     yield_unit: fields.yield_unit?.trim().toLowerCase() || null,
     prep_minutes: fields.prep_minutes, cook_minutes: fields.cook_minutes, is_favorite: fields.is_favorite,
+    is_simple: fields.is_simple,
     source_kind: fields.source_kind, photo_url: fields.photo_url,
     name: fields.name.trim(),
     steps: fields.steps.map((s) => s.trim()).filter(Boolean),
@@ -245,4 +248,16 @@ export function relativeDate(iso: string | null) {
   if (days < 14) return `Il y a ${days} jours`
   if (days < 60) return `Il y a ${Math.round(days / 7)} semaines`
   return `Il y a ${Math.round(days / 30)} mois`
+}
+
+/**
+ * Crée un repas sans recette depuis une liste collée (« 200 g fromage à raclette », « cornichons »…).
+ * Les articles inconnus sont rangés dans le rayon deviné.
+ */
+export async function createSimpleMeal(householdId: string, userId: string, name: string, people: number,
+  linesText: string, aisles: Aisle[], parse: (l: string) => RecipeLine | null, guess: (n: string, a: Aisle[]) => string | null) {
+  const lines = linesText.split(/\r?\n/).map(parse).filter((l): l is RecipeLine => !!l)
+    .map((l) => ({ ...l, name: l.name.charAt(0).toUpperCase() + l.name.slice(1), aisle_id: guess(l.name, aisles) }))
+  const draft: RecipeDraft = { ...emptyDraft(), name: name.trim(), servings: Math.max(1, people), is_simple: true, lines }
+  return saveRecipe(householdId, userId, draft)
 }

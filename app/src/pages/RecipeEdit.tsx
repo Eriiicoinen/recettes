@@ -31,7 +31,7 @@ export default function RecipeEdit() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { household, session } = useSession()
-  const [draft, setDraft] = useState<RecipeDraft>(emptyDraft)
+  const [draft, setDraft] = useState<RecipeDraft>(() => ({ ...emptyDraft(), is_simple: /[?&]simple=1/.test(window.location.hash) }))
   const [rows, setRows] = useState<Row[]>([blankRow()])
   const [stepsText, setStepsText] = useState('')
   const [tagsText, setTagsText] = useState('')
@@ -208,9 +208,24 @@ export default function RecipeEdit() {
         </div>
       )}
 
+      <div className="segmented" role="group" aria-label="Type">
+        <button type="button" className={!draft.is_simple ? 'active' : ''} aria-pressed={!draft.is_simple} onClick={() => set('is_simple', false)}>
+          📖 Recette
+        </button>
+        <button type="button" className={draft.is_simple ? 'active' : ''} aria-pressed={draft.is_simple} onClick={() => set('is_simple', true)}>
+          🧺 Repas sans recette
+        </button>
+      </div>
+      {draft.is_simple && (
+        <p className="muted small" style={{ margin: 0 }}>
+          Raclette, fondue, apéro dînatoire, pizzas… Juste la liste de ce qu'il faut acheter. Les quantités s'adaptent au nombre de convives.
+        </p>
+      )}
+
       <label className="field">
         <span>Nom</span>
-        <input required value={draft.name} onChange={(e) => set('name', e.target.value)} placeholder="Minestrone d'hiver" />
+        <input required value={draft.name} onChange={(e) => set('name', e.target.value)}
+          placeholder={draft.is_simple ? 'Raclette' : "Minestrone d'hiver"} />
       </label>
 
       <div className="grid-2">
@@ -232,6 +247,7 @@ export default function RecipeEdit() {
             </datalist>
           </div>
         </div>
+        {!draft.is_simple && <>
         <label className="field">
           <span>Préparation (min)</span>
           <input type="number" min={0} inputMode="numeric" value={draft.prep_minutes ?? ''}
@@ -242,6 +258,7 @@ export default function RecipeEdit() {
           <input type="number" min={0} inputMode="numeric" value={draft.cook_minutes ?? ''}
             onChange={(e) => set('cook_minutes', e.target.value ? Number(e.target.value) : null)} />
         </label>
+        </>}
       </div>
 
       <div className="field">
@@ -270,7 +287,7 @@ export default function RecipeEdit() {
 
       <div className="card stack">
         <div className="row between">
-          <h2>Ingrédients</h2>
+          <h2>{draft.is_simple ? 'À acheter' : 'Ingrédients'}</h2>
           <button type="button" className="btn ghost small-btn" onClick={() => setPaste(paste === null ? '' : null)}>
             {paste === null ? 'Coller une liste' : 'Fermer'}
           </button>
@@ -321,11 +338,13 @@ export default function RecipeEdit() {
         </p>
       </div>
 
+      {!draft.is_simple && (
       <label className="field">
         <span>Étapes <small className="muted">(une par ligne)</small></span>
         <textarea rows={8} value={stepsText} onChange={(e) => setStepsText(e.target.value)}
           placeholder={'Émincer les oignons.\nFaire revenir 5 min dans l\'huile.\n…'} />
       </label>
+      )}
 
       <label className="field">
         <span>Notes</span>
