@@ -51,6 +51,58 @@ Règles :
 - Rayon : choisis le rayon de magasin le plus probable dans la liste fournie.
 - Si le contenu ne contient pas de recette (page d'erreur, article, accueil), mets is_recipe à false et remplis le reste au mieux avec des valeurs vides.`
 
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+  'Cache-Control': 'no-cache',
+  'Upgrade-Insecure-Requests': '1',
+}
+
+type Direct = { ok: true; content: string; finalUrl: string } | { ok: false; status: number }
+
+/** Lecture directe de la page depuis le serveur Supabase. */
+async function fetchDirect(url: URL): Promise<Direct> {
+  try {
+    const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(12_000), headers: BROWSER_HEADERS })
+    if (!res.ok) return { ok: false, status: res.status }
+    const page = extractFromHtml(await res.text())
+    const finalUrl = res.url || url.href
+    if (page.jsonLd) return { ok: true, finalUrl, content: `Données structurées schema.org de la page ${finalUrl} :\n${JSON.stringify(page.jsonLd)}` }
+    // Page sans données structurées et presque vide : probablement une page anti-robots
+    if (page.text.length < 500) return { ok: false, status: 0 }
+    return { ok: true, finalUrl, content: `Texte de la page ${finalUrl} (titre : ${page.title ?? '?'}) :\n${page.text}` }
+  } catch {
+    return { ok: false, status: 0 }
+  }
+}
+
+/** Repli : Claude lit la page avec l'outil web_fetch (exécuté chez Anthropic) et en recopie la recette. */
+async function fetchViaClaude(anthropic: Anthropic, url: string): Promise<string | null> {
+  const messages: Anthropic.MessageParam[] = [{
+    role: 'user',
+    content: `Lis la page ${url} avec l'outil web_fetch et recopie fidèlement la recette qu'elle contient : titre, nombre de parts, temps de préparation et de cuisson, liste complète des ingrédients avec leurs quantités, et toutes les étapes. Texte brut, sans commentaire. Si la page ne contient pas de recette ou ne peut pas être lue, réponds uniquement : AUCUNE RECETTE`,
+  }]
+  for (let i = 0; i < 4; i++) {
+    const response = await anthropic.messages.create({
+      model: 'claude-opus-5-5',
+      max_tokens: 16000,
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'low' },
+      tools: [{ type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 2 }],
+      messages,
+    })
+    if (response.stop_reason === 'pause_turn') {
+      messages.push({ role: 'assistant', content: response.content })
+      continue
+    }
+    if (response.stop_reason !== 'end_turn') return null
+    const text = response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map((b) => b.text).join('\n').trim()
+    return !text || text.includes('AUCUNE RECETTE') ? null : text
+  }
+  return null
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'POST uniquement' }, 405)
@@ -78,38 +130,31 @@ Deno.serve(async (req) => {
   ])
   const aisleNames = (aisles ?? []).map((a) => a.name as string)
 
+  const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') })
   let content: string
   let sourceUrl: string | null = null
-  if (url) {
-    let parsed: URL
-    try { parsed = new URL(url) } catch { return json({ error: 'Lien invalide.' }, 400) }
-    if (!/^https?:$/.test(parsed.protocol)) return json({ error: 'Lien invalide.' }, 400)
-    let res: Response
-    try {
-      res = await fetch(parsed, {
-        redirect: 'follow',
-        signal: AbortSignal.timeout(15_000),
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml',
-          'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
-        },
-      })
-    } catch {
-      return json({ error: 'Impossible d\'ouvrir cette page (site injoignable ou trop lent).' }, 502)
-    }
-    if (!res.ok) return json({ error: `La page a répondu ${res.status}. Vérifie le lien.` }, 502)
-    const page = extractFromHtml(await res.text())
-    sourceUrl = res.url || url
-    content = page.jsonLd
-      ? `Données structurées schema.org de la page ${sourceUrl} :\n${JSON.stringify(page.jsonLd)}`
-      : `Texte de la page ${sourceUrl} (titre : ${page.title ?? '?'}) :\n${page.text}`
-  } else {
-    content = `Recette collée par l'utilisateur :\n${pasted!.slice(0, 60_000)}`
-  }
-
-  const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') })
   try {
+    if (url) {
+      let parsed: URL
+      try { parsed = new URL(url) } catch { return json({ error: 'Lien invalide.' }, 400) }
+      if (!/^https?:$/.test(parsed.protocol)) return json({ error: 'Lien invalide.' }, 400)
+      const direct = await fetchDirect(parsed)
+      if (direct.ok) {
+        sourceUrl = direct.finalUrl
+        content = direct.content
+      } else if (direct.status === 404 || direct.status === 410) {
+        return json({ error: 'Cette page n\'existe pas (erreur 404). Vérifie le lien.' }, 422)
+      } else {
+        // Site qui bloque les serveurs (403, 429, protection anti-robots…) : la page est lue par l'outil web_fetch d'Anthropic
+        const viaClaude = await fetchViaClaude(anthropic, parsed.href)
+        if (!viaClaude) return json({ error: 'Ce site bloque la lecture automatique. Copie le texte de la recette et colle-le ici.' }, 422)
+        sourceUrl = parsed.href
+        content = `Recette lue sur ${sourceUrl} :\n${viaClaude}`
+      }
+    } else {
+      content = `Recette collée par l'utilisateur :\n${pasted!.slice(0, 60_000)}`
+    }
+
     const response = await anthropic.messages.parse({
       model: 'claude-opus-5-5',
       max_tokens: 16000,
