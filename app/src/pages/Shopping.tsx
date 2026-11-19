@@ -5,7 +5,9 @@ import { guessAisle } from '../lib/aisleGuess'
 import { cacheGet, cacheSet, flush, onQueueChange, run } from '../lib/offline'
 import { ingKey, listAisles, listIngredients, type Aisle, type Ingredient } from '../lib/recipes'
 import { useSession } from '../lib/session'
-import { formatAmount, listItems, syncList, type ShoppingItem } from '../lib/shopping'
+import {
+  addRecurring, formatAmount, listItems, listRecurring, listText, removeRecurring, syncList, type RecurringItem, type ShoppingItem,
+} from '../lib/shopping'
 import { supabase, type Member } from '../lib/supabase'
 import { addDays, mondayOf, relativeWeek, todayISO, weekLabel } from '../lib/week'
 
@@ -27,6 +29,9 @@ export default function Shopping() {
   const [pending, setPending] = useState(0)
   const [selected, setSelected] = useState<ShoppingItem | null>(null)
   const [newLabel, setNewLabel] = useState('')
+  const [recurring, setRecurring] = useState<RecurringItem[]>([])
+  const [showRecurring, setShowRecurring] = useState(false)
+  const [shared, setShared] = useState('')
   const [error, setError] = useState('')
   const itemsRef = useRef<ShoppingItem[] | null>(null)
   itemsRef.current = items
@@ -46,18 +51,20 @@ export default function Shopping() {
     try {
       await flush()
       const miss = withSync ? await syncList(household.id, week, week === thisWeek) : null
-      const [list, a, m, ing] = await Promise.all([
+      const [list, a, m, ing, rec] = await Promise.all([
         listItems(household.id, week),
         listAisles(household.id),
         supabase.from('household_members').select('household_id, user_id, display_name').eq('household_id', household.id)
           .then(({ data }) => (data ?? []) as Member[]),
         listIngredients(household.id),
+        listRecurring(household.id),
       ])
       if (n !== loadSeq.current) return
       setItems(list)
       setAisles(a)
       setMembers(m)
       setIngredients(ing)
+      setRecurring(rec)
       if (miss) setMissing(miss)
       setError('')
       persist({ items: list, aisles: a, members: m, ...(miss ? { missing: miss } : {}) })
@@ -100,6 +107,7 @@ export default function Shopping() {
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'week_items' }, () => schedule(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shopping_items', filter }, () => schedule(false))
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'shopping_items' }, () => schedule(false))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'recurring_items', filter }, () => schedule(true))
       .subscribe()
     return () => { clearTimeout(timer); void supabase.removeChannel(ch) }
   }, [household, week, cacheKey, load])
@@ -164,13 +172,40 @@ export default function Shopping() {
     void safe(() => run({ kind: 'delete', table: 'shopping_items', id: i.id }))
   }
 
+  /** Article à racheter chaque semaine : retenu, et ajouté automatiquement aux prochaines listes */
+  async function makeRecurring(i: ShoppingItem) {
+    setSelected(null)
+    await safe(async () => {
+      const r = await addRecurring(household!.id, i.label, i.aisle_id)
+      if (i.origin === 'manual') await supabase.from('shopping_items').update({ origin: 'recurring', recurring_id: r.id }).eq('id', i.id)
+      await load(true)
+    })
+  }
+
+  async function stopRecurring(id: string) {
+    setSelected(null)
+    await safe(async () => { await removeRecurring(id); await load(false) })
+  }
+
+  async function shareList() {
+    const text = listText(week, groups, staples)
+    try {
+      if (navigator.share) await navigator.share({ title: 'Liste de courses', text })
+      else { await navigator.clipboard.writeText(text); setShared('Liste copiée ✓') }
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return
+      try { await navigator.clipboard.writeText(text); setShared('Liste copiée ✓') } catch { setShared('Partage impossible sur cet appareil.') }
+    }
+    setTimeout(() => setShared(''), 2000)
+  }
+
   function addManual(e: FormEvent) {
     e.preventDefault()
     const label = newLabel.trim()
     if (!label || !household) return
     const known = ingredients.find((x) => ingKey(x.name) === ingKey(label))
     const row: ShoppingItem = {
-      id: crypto.randomUUID(), household_id: household.id, week_start: week, origin: 'manual', ingredient_id: null,
+      id: crypto.randomUUID(), household_id: household.id, week_start: week, origin: 'manual', ingredient_id: null, recurring_id: null,
       label: label.charAt(0).toUpperCase() + label.slice(1), quantity: null, unit: null,
       aisle_id: known?.aisle_id ?? guessAisle(label, aisles), sources: [], is_staple: false, hidden: false,
       checked: false, checked_by: null, checked_at: null, created_at: new Date().toISOString(),
@@ -217,7 +252,7 @@ export default function Shopping() {
       <button className="shop-check" onClick={() => toggle(i)} aria-pressed={i.checked}>
         <span className="box" aria-hidden>{i.checked ? '✓' : ''}</span>
         <span className="shop-main">
-          <span className="shop-label">{i.label}</span>
+          <span className="shop-label">{i.label}{i.origin === 'recurring' && <span className="muted small" aria-label="chaque semaine"> 🔁</span>}</span>
           {formatAmount(i.quantity, i.unit) && <span className="shop-qty">{formatAmount(i.quantity, i.unit)}</span>}
           {i.checked && i.checked_by && i.checked_by !== me?.user_id && <span className="muted small"> · {memberName(i.checked_by)}</span>}
         </span>
@@ -236,6 +271,13 @@ export default function Shopping() {
         </div>
         <button className="btn ghost icon" onClick={() => goWeek(addDays(week, 7))} aria-label="Semaine suivante">›</button>
       </div>
+
+      {remaining > 0 && (
+        <div className="row between">
+          <button className="btn small-btn" onClick={shareList}>📤 Partager la liste</button>
+          {shared && <span className="muted small" role="status">{shared}</span>}
+        </div>
+      )}
 
       {(!online || pending > 0) && (
         <div className="offline-banner" role="status">
@@ -299,12 +341,30 @@ export default function Shopping() {
         </>
       )}
 
+      <button className="btn ghost small-btn" style={{ alignSelf: 'center' }} onClick={() => setShowRecurring(true)}>
+        🔁 Articles de chaque semaine{recurring.length ? ` (${recurring.length})` : ''}
+      </button>
+
+      {showRecurring && household && (
+        <RecurringSheet
+          items={recurring}
+          onClose={() => setShowRecurring(false)}
+          onAdd={(label) => safe(async () => {
+            const known = ingredients.find((x) => ingKey(x.name) === ingKey(label))
+            await addRecurring(household.id, label, known?.aisle_id ?? guessAisle(label, aisles))
+            await load(true)
+          })}
+          onRemove={(id) => stopRecurring(id)}
+        />
+      )}
+
       {selected && (
         <Sheet title={selected.label} onClose={() => setSelected(null)}>
           <div className="stack">
             {formatAmount(selected.quantity, selected.unit) && <div className="shop-qty big">{formatAmount(selected.quantity, selected.unit)}</div>}
             {selected.sources.length > 0 && <p className="muted small" style={{ margin: 0 }}>Pour : {selected.sources.join(', ')}</p>}
             {selected.origin === 'manual' && <p className="muted small" style={{ margin: 0 }}>Ajouté à la main</p>}
+            {selected.origin === 'recurring' && <p className="muted small" style={{ margin: 0 }}>🔁 Ajouté chaque semaine</p>}
             <label className="field">
               <span>Rayon</span>
               <select value={selected.aisle_id ?? ''} onChange={(e) => void setAisle(selected, e.target.value || null)}>
@@ -319,16 +379,58 @@ export default function Shopping() {
                 <span>Produit du placard <span className="muted small">(sel, huile… : rangé à part, à vérifier)</span></span>
               </label>
             )}
-            {selected.origin === 'menu' ? (
-              <button className="btn" onClick={() => { update(selected, { hidden: !selected.hidden }); setSelected(null) }}>
-                {selected.hidden ? 'Remettre dans la liste' : "J'en ai déjà à la maison"}
-              </button>
-            ) : (
+            {selected.origin === 'manual' && (
+              <button className="btn" onClick={() => void makeRecurring(selected)}>🔁 En acheter chaque semaine</button>
+            )}
+            {selected.origin === 'recurring' && selected.recurring_id && (
+              <button className="btn" onClick={() => void stopRecurring(selected.recurring_id!)}>Ne plus l'ajouter chaque semaine</button>
+            )}
+            {selected.origin === 'manual' ? (
               <button className="btn ghost danger" onClick={() => remove(selected)}>Supprimer</button>
+            ) : (
+              <button className="btn" onClick={() => { update(selected, { hidden: !selected.hidden }); setSelected(null) }}>
+                {selected.hidden ? 'Remettre dans la liste' : selected.origin === 'recurring' ? 'Pas besoin cette semaine' : "J'en ai déjà à la maison"}
+              </button>
             )}
           </div>
         </Sheet>
       )}
     </section>
+  )
+}
+
+function RecurringSheet({ items, onClose, onAdd, onRemove }: {
+  items: RecurringItem[]; onClose: () => void; onAdd: (label: string) => void; onRemove: (id: string) => void
+}) {
+  const [label, setLabel] = useState('')
+  return (
+    <Sheet title="Articles de chaque semaine" onClose={onClose}>
+      <div className="stack">
+        <p className="muted small" style={{ margin: 0 }}>
+          Ajoutés automatiquement à la liste de chaque nouvelle semaine. « Pas besoin cette semaine » les retire juste pour une semaine.
+        </p>
+        <form className="row" onSubmit={(e) => {
+          e.preventDefault()
+          const l = label.trim()
+          if (!l) return
+          onAdd(l.charAt(0).toUpperCase() + l.slice(1))
+          setLabel('')
+        }}>
+          <input style={{ flex: 1, minWidth: 0 }} value={label} onChange={(e) => setLabel(e.target.value)}
+            placeholder="Lait, pain, café…" aria-label="Nouvel article régulier" />
+          <button className="btn primary" disabled={!label.trim()}>Ajouter</button>
+        </form>
+        {items.length === 0 ? <p className="muted small">Aucun pour l'instant.</p> : (
+          <ul className="plain">
+            {items.map((r) => (
+              <li key={r.id} className="row between">
+                <span>{r.label}</span>
+                <button className="btn ghost small-btn danger" onClick={() => onRemove(r.id)} aria-label={`Retirer ${r.label}`}>Retirer</button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Sheet>
   )
 }

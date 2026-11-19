@@ -26,8 +26,34 @@ export function splitInput(input: string): { url?: string; text?: string } {
   return { text: s }
 }
 
-export async function importRecipe(input: string, aisles: Aisle[]): Promise<{ draft: RecipeDraft; lines: RecipeLine[] }> {
+type Photo = { media_type: string; data: string }
+
+/** Photo réduite (1600 px au plus) en JPEG : lisible par Claude, légère à envoyer. */
+async function shrink(file: File): Promise<Photo> {
+  const bitmap = await createImageBitmap(file)
+  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(bitmap.width * scale)
+  canvas.height = Math.round(bitmap.height * scale)
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  bitmap.close()
+  const url = canvas.toDataURL('image/jpeg', 0.85)
+  return { media_type: 'image/jpeg', data: url.slice(url.indexOf(',') + 1) }
+}
+
+export async function importPhotos(files: File[], aisles: Aisle[]) {
+  if (files.length > 4) throw new Error('4 photos au maximum.')
+  let images: Photo[]
+  try { images = await Promise.all(files.map(shrink)) } catch { throw new Error('Photo illisible : essaie en JPEG ou PNG.') }
+  return callImport({ images }, aisles, 'photo')
+}
+
+export async function importRecipe(input: string, aisles: Aisle[]) {
   const body = splitInput(input)
+  return callImport(body, aisles, body.url ? 'url' : 'text')
+}
+
+async function callImport(body: object, aisles: Aisle[], kind: 'url' | 'text' | 'photo'): Promise<{ draft: RecipeDraft; lines: RecipeLine[] }> {
   const { data, error } = await supabase.functions.invoke('import-recipe', { body })
   if (error) {
     if (error instanceof FunctionsHttpError) {
@@ -51,7 +77,7 @@ export async function importRecipe(input: string, aisles: Aisle[]): Promise<{ dr
       steps: r.steps,
       tags: r.tags,
       notes: r.notes,
-      source_kind: body.url ? 'url' : 'text',
+      source_kind: kind,
       source_url: data.source_url ?? null,
     },
     lines: r.ingredients.map((i) => ({

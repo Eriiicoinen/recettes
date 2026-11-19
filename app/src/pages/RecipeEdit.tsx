@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { guessAisle } from '../lib/aisleGuess'
-import { findBySource, importRecipe } from '../lib/importRecipe'
+import { findBySource, importPhotos, importRecipe } from '../lib/importRecipe'
 import { parseIngredientLine } from '../lib/parseLine'
 import {
   CATEGORIES, emptyDraft, getRecipe, listAisles, listIngredients, ingKey, parseQty, saveRecipe, SEASONS, UNITS,
@@ -56,14 +56,14 @@ export default function RecipeEdit() {
     void listAisles(household.id).then(setAisles)
   }, [household])
 
-  async function runImport(input = importInput) {
-    if (!household || !input.trim()) return
+  async function runImport(input: string | File[] = importInput) {
+    if (!household || (typeof input === 'string' ? !input.trim() : !input.length)) return
     setImporting(true)
     setImportError('')
     setDuplicate(null)
     try {
       const a = aisles.length ? aisles : await listAisles(household.id)
-      const { draft: d, lines } = await importRecipe(input, a)
+      const { draft: d, lines } = typeof input === 'string' ? await importRecipe(input, a) : await importPhotos(input, a)
       setDraft(d)
       setRows([...lines.map(toRow), blankRow()])
       setStepsText(d.steps.join('\n'))
@@ -187,6 +187,11 @@ export default function RecipeEdit() {
           <button type="button" className="btn primary" onClick={() => runImport()} disabled={importing || !importInput.trim()}>
             {importing ? 'Lecture de la recette…' : 'Importer'}
           </button>
+          <label className={importing ? 'btn disabled' : 'btn'} aria-disabled={importing}>
+            📷 Depuis une photo (livre, fiche…)
+            <input type="file" accept="image/*" multiple hidden disabled={importing}
+              onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ''; void runImport(f) }} />
+          </label>
           {importing && <p className="muted small" style={{ margin: 0 }}>Ça prend 10 à 30 secondes.</p>}
           {importError && <p className="error" role="alert" style={{ margin: 0 }}>{importError}</p>}
           <p className="muted small" style={{ margin: 0 }}>Ou remplis la fiche à la main ci-dessous.</p>

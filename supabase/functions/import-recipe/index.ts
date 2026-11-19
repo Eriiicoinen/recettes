@@ -1,5 +1,5 @@
-// Importe une recette depuis une URL ou un texte collé, et la renvoie structurée (sans l'enregistrer).
-// POST { url?: string, text?: string }  →  { recipe: ImportedRecipe, source_url: string | null }
+// Importe une recette depuis une URL, un texte collé ou des photos, et la renvoie structurée (sans l'enregistrer).
+// POST { url?: string, text?: string, images?: { media_type, data (base64) }[] }  →  { recipe: ImportedRecipe, source_url: string | null }
 import Anthropic from 'npm:@anthropic-ai/sdk@1.10.0'
 import { zodOutputFormat } from 'npm:@anthropic-ai/sdk@1.10.0/helpers/zod'
 import { createClient } from 'npm:@supabase/supabase-js@2.119.2'
@@ -10,6 +10,8 @@ const CATEGORIES = ['Entrée', 'Plat', 'Accompagnement', 'Soupe', 'Salade', 'Des
 const SEASONS = ['Printemps', 'Été', 'Automne', 'Hiver'] as const
 const UNITS = ['g', 'kg', 'ml', 'cl', 'l', 'c. à s.', 'c. à c.', 'pièce', 'gousse', 'botte', 'tranche', 'pincée',
   'sachet', 'boîte', 'pot', 'verre', 'tasse', 'feuille', 'brin']
+
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -43,7 +45,7 @@ function schemaFor(aisles: string[]) {
   })
 }
 
-const SYSTEM = `Tu transformes une recette (données structurées d'une page web, texte de page, ou texte collé) en fiche pour un carnet de recettes familial en français.
+const SYSTEM = `Tu transformes une recette (données structurées d'une page web, texte de page, texte collé, ou photo d'un livre ou d'une fiche manuscrite) en fiche pour un carnet de recettes familial en français.
 
 Règles :
 - Tout en français. Traduis si la source est dans une autre langue, et convertis les unités impériales (cups, oz, lb, °F) en unités métriques.
@@ -51,6 +53,7 @@ Règles :
 - Noms d'ingrédients : au singulier, majuscule initiale, réutilise exactement un nom de la liste « ingrédients déjà connus » quand c'est le même produit.
 - Rayon : choisis le rayon de magasin le plus probable dans la liste fournie.
 - Rendement : distingue bien un nombre de personnes d'un nombre de pièces. « Pour 20 cookies », « 12 muffins », « 1 cake », « 6 pots » → servings = ce nombre et yield_unit = « cookies », « muffins », « cake », « pots ». Les données schema.org (recipeYield) indiquent souvent seulement un nombre : vérifie dans le titre, les étapes ou le texte si ce nombre désigne des pièces. yield_unit = null uniquement pour des personnes ou des parts.
+- Photo : lis tout le texte visible, y compris l'écriture manuscrite ; si plusieurs photos, ce sont les pages successives d'une même recette. Ce qui est illisible est omis plutôt qu'inventé.
 - Si le contenu ne contient pas de recette (page d'erreur, article, accueil), mets is_recipe à false et remplis le reste au mieux avec des valeurs vides.`
 
 const BROWSER_HEADERS = {
@@ -145,11 +148,18 @@ Deno.serve(async (req) => {
   const { data: { user } } = await supabase.auth.getUser(authHeader.replace(/^Bearer\s+/i, ''))
   if (!user) return json({ error: 'Non connecté' }, 401)
 
-  let body: { url?: string; text?: string }
+  let body: { url?: string; text?: string; images?: { media_type?: string; data?: string }[] }
   try { body = await req.json() } catch { return json({ error: 'Requête invalide' }, 400) }
   const url = body.url?.trim() || null
   const pasted = body.text?.trim() || null
-  if (!url && !pasted) return json({ error: 'Donne un lien ou un texte.' }, 400)
+  const images = Array.isArray(body.images) ? body.images : []
+  if (images.length > 4) return json({ error: '4 photos au maximum.' }, 400)
+  for (const im of images) {
+    if (!IMAGE_TYPES.includes(im.media_type as typeof IMAGE_TYPES[number]) || typeof im.data !== 'string' || im.data.length > 6_000_000) {
+      return json({ error: 'Photo illisible ou trop lourde.' }, 400)
+    }
+  }
+  if (!url && !pasted && !images.length) return json({ error: 'Donne un lien, un texte ou une photo.' }, 400)
 
   // Contexte du foyer : rayons et ingrédients connus, pour des noms et rayons cohérents
   const { data: member } = await supabase.from('household_members').select('household_id').eq('user_id', user.id).limit(1).maybeSingle()
@@ -185,9 +195,15 @@ Deno.serve(async (req) => {
         sourceUrl = parsed.href
         content = `Recette lue sur ${sourceUrl} :\n${viaClaude}`
       }
+    } else if (images.length) {
+      content = `Recette en photo (${images.length} image${images.length > 1 ? 's' : ''}) ci-dessus.${pasted ? `\nPrécision de l'utilisateur : ${pasted.slice(0, 2000)}` : ''}`
     } else {
       content = `Recette collée par l'utilisateur :\n${pasted!.slice(0, 60_000)}`
     }
+    const imageBlocks: Anthropic.ImageBlockParam[] = url ? [] : images.map((im) => ({
+      type: 'image',
+      source: { type: 'base64', media_type: im.media_type as typeof IMAGE_TYPES[number], data: im.data! },
+    }))
 
     const response = await anthropic.messages.parse({
       model: 'claude-opus-5-5',
@@ -197,14 +213,17 @@ Deno.serve(async (req) => {
       system: SYSTEM,
       messages: [{
         role: 'user',
-        content: `Rayons du magasin : ${aisleNames.join(' ; ') || '—'}\nIngrédients déjà connus : ${(known ?? []).map((k) => k.name).join(' ; ') || '—'}\n\n${content}`,
+        content: [
+          ...imageBlocks,
+          { type: 'text', text: `Rayons du magasin : ${aisleNames.join(' ; ') || '—'}\nIngrédients déjà connus : ${(known ?? []).map((k) => k.name).join(' ; ') || '—'}\n\n${content}` },
+        ],
       }],
     })
     if (response.stop_reason === 'refusal') return json({ error: 'Claude n\'a pas pu traiter ce contenu.' }, 422)
     if (response.stop_reason === 'max_tokens') return json({ error: 'Recette trop longue à traiter.' }, 422)
     const recipe = response.parsed_output
     if (!recipe) return json({ error: 'Réponse illisible, réessaie.' }, 502)
-    if (!recipe.is_recipe) return json({ error: 'Aucune recette trouvée sur cette page.' }, 422)
+    if (!recipe.is_recipe) return json({ error: images.length ? 'Aucune recette lisible sur cette photo.' : 'Aucune recette trouvée sur cette page.' }, 422)
     return json({ recipe, source_url: sourceUrl })
   } catch (e) {
     if (e instanceof Anthropic.AuthenticationError) return json({ error: 'Clé API Claude invalide ou absente (secret ANTHROPIC_API_KEY).' }, 500)

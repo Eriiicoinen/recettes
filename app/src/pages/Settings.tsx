@@ -4,7 +4,15 @@ import { supabase, type Member } from '../lib/supabase'
 import ConnectorCard from './ConnectorCard'
 
 export default function Settings() {
-  const { household, me, session } = useSession()
+  const { household, me, session, reloadHousehold } = useSession()
+  const [peopleError, setPeopleError] = useState('')
+
+  async function setPeople(n: number) {
+    if (!household || n < 1 || n > 20) return
+    const { error } = await supabase.from('households').update({ people: n }).eq('id', household.id)
+    setPeopleError(error ? error.message : '')
+    await reloadHousehold()
+  }
   const [members, setMembers] = useState<Member[]>([])
   const [copied, setCopied] = useState(false)
 
@@ -53,6 +61,25 @@ export default function Settings() {
             ))}
           </ul>
         </div>
+      </div>
+
+      <div className="card stack">
+        <div className="row between">
+          <div>
+            <h2>Nous sommes</h2>
+            <div className="muted small">Quantités prévues quand une recette est ajoutée à la semaine</div>
+          </div>
+          <div className="stepper">
+            <button onClick={() => setPeople(household.people - 1)} aria-label="Moins de personnes">−</button>
+            <span>{household.people} pers.</span>
+            <button onClick={() => setPeople(household.people + 1)} aria-label="Plus de personnes">+</button>
+          </div>
+        </div>
+        {peopleError && <p className="error" style={{ margin: 0 }}>{peopleError}</p>}
+        <p className="muted small" style={{ margin: 0 }}>
+          Une recette « pour 6 » est prévue pour {household.people} ; les recettes en pièces (20 cookies) gardent leur rendement.
+          Les invités et les restes s'ajustent repas par repas dans l'onglet Semaine.
+        </p>
       </div>
 
       <ConnectorCard householdId={household.id} />

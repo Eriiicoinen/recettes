@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import ReviewPrompt from '../components/ReviewPrompt'
 import {
   CATEGORIES, currentSeason, formatDuration, listRecipes, listStats, relativeDate,
   type Recipe, type RecipeStats,
@@ -91,6 +92,8 @@ export default function RecipeList() {
         <h1 style={{ margin: 0 }}>Recettes</h1>
         <Link to="/recettes/nouvelle" className="btn primary">+ Ajouter</Link>
       </div>
+
+      {household && !query && <ReviewPrompt householdId={household.id} />}
 
       <div className="search">
         <input type="search" value={query} onChange={(e) => setQuery(e.target.value)}

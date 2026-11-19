@@ -30,7 +30,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const cacheKey = `recettes.household.${uid}`
     const { data: m, error } = await supabase
       .from('household_members')
-      .select('household_id, user_id, display_name, households(id, name, invite_code)')
+      .select('household_id, user_id, display_name, households(id, name, invite_code, people)')
       .eq('user_id', uid)
       .order('joined_at')
       .limit(1)

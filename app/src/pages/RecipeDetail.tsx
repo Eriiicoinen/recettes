@@ -7,7 +7,8 @@ import {
 import { supabase } from '../lib/supabase'
 import Sheet from '../components/Sheet'
 import { useSession } from '../lib/session'
-import { addDays, addToWeek, mondayOf, relativeWeek, todayISO, weekLabel, weeksContaining } from '../lib/week'
+import { findDurations, formatClock, useTimers } from '../lib/timers'
+import { addDays, addToWeek, defaultServings, mondayOf, relativeWeek, todayISO, weekLabel, weeksContaining } from '../lib/week'
 
 type WakeLockSentinelLike = { release: () => Promise<void> }
 
@@ -31,6 +32,7 @@ export default function RecipeDetail() {
   const [planOpen, setPlanOpen] = useState(false)
   const [inWeeks, setInWeeks] = useState<Set<string>>(new Set())
   const [planned, setPlanned] = useState('')
+  const { timers, now, start: startTimer, stop: stopTimer } = useTimers()
 
   async function openPlan() {
     if (!household || !recipe) return
@@ -42,7 +44,9 @@ export default function RecipeDetail() {
   async function plan(week: string) {
     if (!household || !recipe) return
     setPlanOpen(false)
-    await addToWeek(household.id, week, { recipe_id: recipe.id, servings })
+    // Quantité laissée telle quelle : la taille du foyer ; sinon celle choisie avec le sélecteur
+    const n = servings === recipe.servings ? defaultServings(recipe, household.people) : servings
+    await addToWeek(household.id, week, { recipe_id: recipe.id, servings: n })
     setPlanned(`Ajoutée : ${relativeWeek(week).toLowerCase()}`)
   }
 
@@ -180,7 +184,15 @@ export default function RecipeDetail() {
             {recipe.steps.map((s, i) => (
               <li key={i} className={doneStep.has(i) ? 'done' : ''} onClick={() => toggle(doneStep, i, setDoneStep)}>
                 <span className="step-num">{i + 1}</span>
-                <span>{s}</span>
+                <span>
+                  {s}
+                  {findDurations(s).map((d) => (
+                    <button key={d.seconds} className="timer-chip" aria-label={`Minuteur ${d.label}`}
+                      onClick={(e) => { e.stopPropagation(); setCooking(true); startTimer(`Étape ${i + 1} · ${d.label}`, d.seconds) }}>
+                      ⏱ {d.label}
+                    </button>
+                  ))}
+                </span>
               </li>
             ))}
           </ol>
@@ -196,6 +208,18 @@ export default function RecipeDetail() {
 
       {recipe.source_url && (
         <a className="muted small" href={recipe.source_url} target="_blank" rel="noreferrer">Source : {hostname(recipe.source_url)} ↗</a>
+      )}
+
+      {timers.length > 0 && (
+        <div className="timer-bar" role="status" aria-live="polite">
+          {timers.map((t) => (
+            <div key={t.id} className={t.done ? 'timer done' : 'timer'}>
+              <span className="timer-label">{t.label}</span>
+              <strong className="timer-time">{t.done ? '⏰ Terminé !' : formatClock((t.end - now) / 1000)}</strong>
+              <button className="btn ghost icon" onClick={() => stopTimer(t.id)} aria-label={t.done ? 'OK' : 'Arrêter'}>{t.done ? 'OK' : '✕'}</button>
+            </div>
+          ))}
+        </div>
       )}
 
       {!cooking && (

@@ -2,7 +2,7 @@
 
 > Status (2026-11-19): **MVP built (M0–M5)** and live at https://eriiicoinen.github.io/recettes/.
 > Done: account & household, recipe book + search, import from link/text (Claude), Claude connector (MCP: add/search/get recipe,
-> week, shopping list), weekly menu + ideas, shopping list with live sync and offline mode. Next: P1 items (M6).
+> week, shopping list), weekly menu + ideas, shopping list with live sync and offline mode. M6 started: fill my week, leftovers / away / guests, household size, recurring items, share the list, rating after the meal, cooking timers, photo import.
 > Replaces: `menus.gs` (Google Sheets + Apps Script), which works but is not user-friendly on a phone.
 
 ## 1. Goal
@@ -143,7 +143,7 @@ Done when:
 4. **M3 – Claude connector** (MCP server, `add_recipe`).
 5. **M4 – Weekly basket/menu** + ideas.
 6. **M5 – Shopping list** + offline + live sync. → **MVP, switch off the Sheet.**
-7. **M6 – P1 items** (photos, photo import, more connector tools, settings, list period).
+7. **M6 – P1 items** (done: fill my week, leftovers / away / guests, household size, recurring items, share list, post-meal rating, timers, photo import · remaining: recipe photos, repeat a week, list period).
 8. **M7 – P2 items.**
 
 ## 8. Decisions (2026-11-19)

@@ -277,3 +277,35 @@ textarea { min-height: 0; resize: vertical; line-height: 1.5; }
 .shop-more { color: var(--muted); }
 .toggle-row { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
 .toggle-row input { width: 22px; height: 22px; min-height: 0; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
+
+/* ---------- P1 : remplir la semaine, avis, minuteurs, photo ---------- */
+.fill-btn { width: 100%; }
+.fill-list { display: flex; flex-direction: column; gap: 4px; max-height: 50vh; overflow-y: auto; }
+.fill-row { display: grid; grid-template-columns: 92px 1fr auto; align-items: center; gap: 8px; min-height: 44px; border-bottom: 1px solid var(--border); }
+.fill-row:last-child { border-bottom: 0; }
+.fill-when { text-transform: capitalize; }
+.fill-what { min-width: 0; overflow-wrap: anywhere; }
+.review-card { border-color: var(--accent); }
+.stars { display: flex; gap: 4px; }
+.star { width: 44px; height: 44px; font-size: 1.7rem; line-height: 1; border: 0; background: transparent; color: var(--border); cursor: pointer; padding: 0; }
+.star.on { color: var(--accent); }
+.timer-chip {
+  display: inline-flex; align-items: center; gap: 4px; margin: 4px 0 0 8px; padding: 4px 10px; min-height: 32px;
+  border-radius: 999px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent);
+  font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; vertical-align: middle;
+}
+.timer-bar {
+  position: sticky; bottom: calc(var(--tabbar-h) + 12px + env(safe-area-inset-bottom)); z-index: 5; display: flex; flex-direction: column; gap: 6px;
+}
+.timer {
+  display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 12px;
+  background: var(--text); color: var(--bg); box-shadow: 0 4px 16px rgb(0 0 0 / .2);
+}
+.timer .btn { color: var(--bg); }
+.timer-label { flex: 1; min-width: 0; font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timer-time { font-variant-numeric: tabular-nums; font-size: 1.15rem; }
+.timer.done { background: var(--accent); color: var(--accent-text); animation: pulse 1s ease-in-out infinite alternate; }
+.timer.done .btn { color: var(--accent-text); }
+@keyframes pulse { from { transform: scale(1); } to { transform: scale(1.02); } }
+@media (prefers-reduced-motion: reduce) { .timer.done { animation: none; } }
+.btn.disabled { opacity: .6; pointer-events: none; }

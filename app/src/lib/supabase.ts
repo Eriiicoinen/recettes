@@ -9,5 +9,5 @@ export const supabase = createClient(url ?? 'http://localhost', key ?? 'missing'
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
 })
 
-export type Household = { id: string; name: string; invite_code: string }
+export type Household = { id: string; name: string; invite_code: string; people: number }
 export type Member = { household_id: string; user_id: string; display_name: string }

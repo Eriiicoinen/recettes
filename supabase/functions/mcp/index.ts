@@ -123,7 +123,7 @@ async function toolDefinitions(ctx: Ctx) {
           week: { type: 'string', description: '« this » (défaut), « next », ou une date AAAA-MM-JJ de la semaine voulue. Ignoré si day est donné.' },
           day: { type: 'string', description: 'Date AAAA-MM-JJ du repas' },
           meal: { type: 'string', enum: ['midi', 'soir'], description: 'Défaut : soir' },
-          servings: { type: 'integer', minimum: 1, description: 'Défaut : rendement de la recette' },
+          servings: { type: 'integer', minimum: 1, description: "Défaut : taille du foyer (rendement d'origine pour une recette en pièces)" },
         },
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -336,7 +336,12 @@ async function addToWeek(ctx: Ctx, a: Record<string, unknown>) {
   const day = isDate(a.day) ? a.day : null
   const meal = day ? (a.meal === 'midi' ? 'midi' : 'soir') : null
   const weekStart = day ? mondayOfISO(day) : resolveWeek(a.week)
-  const servings = Number.isInteger(a.servings) && (a.servings as number) > 0 ? a.servings as number : recipe?.servings ?? null
+  // Par défaut : la taille du foyer pour une recette en personnes, le rendement d'origine pour une recette en pièces
+  let servings: number | null = Number.isInteger(a.servings) && (a.servings as number) > 0 ? a.servings as number : null
+  if (!servings && recipe) {
+    const { data: h } = await ctx.db.from('households').select('people').eq('id', ctx.householdId).single()
+    servings = recipe.yield_unit ? recipe.servings : h?.people ?? recipe.servings
+  }
   const { error } = await ctx.db.from('week_items').insert({
     household_id: ctx.householdId, week_start: weekStart, recipe_id: recipe?.id ?? null, free_text: recipe ? null : freeText,
     day, meal, servings,

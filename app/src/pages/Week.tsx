@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import ReviewPrompt from '../components/ReviewPrompt'
 import Sheet from '../components/Sheet'
 import { currentSeason, listRecipes, listStats, norm, yieldLabel, type Recipe, type RecipeStats } from '../lib/recipes'
 import { useSession } from '../lib/session'
 import { supabase } from '../lib/supabase'
 import {
-  addDays, addToWeek, dayLabel, listWeek, MEALS, mondayOf, pickIdeas, relativeWeek, removeWeekItem, todayISO,
-  updateWeekItem, weekDays, weekLabel, type Meal, type WeekItem,
+  addDays, addToWeek, applyProposals, dayLabel, defaultServings, dropProposal, listWeek, makeLeftovers, MEALS, mondayOf,
+  pickIdeas, proposeWeek, relativeWeek, removeLeftovers, removeWeekItem, swapProposal, todayISO, updateWeekItem, weekDays,
+  weekLabel, type Meal, type Proposal, type WeekItem,
 } from '../lib/week'
 
 type Target = { day: string; meal: Meal } | 'basket'
@@ -24,6 +26,7 @@ export default function Week() {
   const [selected, setSelected] = useState<WeekItem | null>(null)
   const [moving, setMoving] = useState<WeekItem | null>(null)
   const [ideasSeed, setIdeasSeed] = useState(0)
+  const [filling, setFilling] = useState(false)
   const [error, setError] = useState('')
 
   const reqId = useRef(0)
@@ -96,7 +99,7 @@ export default function Week() {
     const t = picker!
     setPicker(null)
     await act(() => addToWeek(household!.id, start, {
-      recipe_id: recipe.id, servings: recipe.servings, ...(t === 'basket' ? {} : t),
+      recipe_id: recipe.id, servings: defaultServings(recipe, household!.people), ...(t === 'basket' ? {} : t),
     }))
   }
   async function pickFreeText(textValue: string) {
@@ -140,8 +143,12 @@ export default function Week() {
       )}
 
       {error && <p className="error">{error}</p>}
+      {household && start === mondayOf(today) && !moving && <ReviewPrompt householdId={household.id} />}
       {items === null ? <p className="muted">Chargement…</p> : (
         <>
+          {!moving && addDays(start, 6) >= today && (
+            <button className="btn primary fill-btn" onClick={() => setFilling(true)}>✨ Remplir ma semaine</button>
+          )}
           <div className="card stack">
             <div className="row between">
               <h2>Recettes de la semaine</h2>
@@ -198,7 +205,7 @@ export default function Week() {
                 {ideas.map((r) => (
                   <li key={r.id} className="row between">
                     <Link to={`/recettes/${r.id}`}>{r.name}</Link>
-                    <button className="btn small-btn" onClick={() => act(() => addToWeek(household!.id, start, { recipe_id: r.id, servings: r.servings }))}>
+                    <button className="btn small-btn" onClick={() => act(() => addToWeek(household!.id, start, { recipe_id: r.id, servings: defaultServings(r, household!.people) }))}>
                       + Semaine
                     </button>
                   </li>
@@ -227,22 +234,48 @@ export default function Week() {
           item={selected}
           name={itemName(selected)}
           recipe={selected.recipe_id ? recipes.get(selected.recipe_id) ?? null : null}
+          people={household?.people ?? 2}
+          hasLeftovers={(items ?? []).some((i) => i.leftover_of === selected.id)}
           onClose={() => setSelected(null)}
           onServings={(n) => act(() => updateWeekItem(selected.id, { servings: n })).then(() => setSelected({ ...selected, servings: n }))}
           onMove={() => { setMoving(selected); setSelected(null) }}
           onToBasket={() => { const s = selected; setSelected(null); void act(() => updateWeekItem(s.id, { day: null, meal: null })) }}
-          onRemove={() => { const s = selected; setSelected(null); void act(() => removeWeekItem(s.id)) }}
+          onLeftovers={() => {
+            const s = selected
+            const r = recipes.get(s.recipe_id!)
+            setSelected(null)
+            if (r) void act(() => makeLeftovers(s, r, household!.people))
+          }}
+          onRemove={() => {
+            const s = selected
+            setSelected(null)
+            const parent = s.leftover_of ? (items ?? []).find((i) => i.id === s.leftover_of) : undefined
+            void act(() => (s.leftover_of ? removeLeftovers(s, parent) : removeWeekItem(s.id)))
+          }}
+        />
+      )}
+
+      {filling && household && items && (
+        <FillSheet
+          start={start}
+          today={today}
+          items={items}
+          recipes={[...recipes.values()]}
+          lastCooked={new Map([...stats.values()].map((s) => [s.recipe_id, s.last_cooked]))}
+          onClose={() => setFilling(false)}
+          onApply={(proposals) => { setFilling(false); void act(() => applyProposals(household.id, start, proposals, household.people)) }}
         />
       )}
     </section>
   )
 }
 
-function ItemSheet({ item, name, recipe, onClose, onServings, onMove, onToBasket, onRemove }: {
-  item: WeekItem; name: string; recipe: Recipe | null; onClose: () => void; onServings: (n: number) => void
-  onMove: () => void; onToBasket: () => void; onRemove: () => void
+function ItemSheet({ item, name, recipe, people, hasLeftovers, onClose, onServings, onMove, onToBasket, onLeftovers, onRemove }: {
+  item: WeekItem; name: string; recipe: Recipe | null; people: number; hasLeftovers: boolean; onClose: () => void
+  onServings: (n: number) => void; onMove: () => void; onToBasket: () => void; onLeftovers: () => void; onRemove: () => void
 }) {
-  const servings = item.servings ?? recipe?.servings ?? 1
+  const servings = item.servings ?? (recipe ? defaultServings(recipe, people) : 1)
+  const forPeople = recipe && !recipe.yield_unit
   return (
     <Sheet title={name} onClose={onClose}>
       <div className="stack">
@@ -257,6 +290,19 @@ function ItemSheet({ item, name, recipe, onClose, onServings, onMove, onToBasket
             </div>
           </div>
         )}
+        {forPeople && (
+          <div className="row wrap" style={{ gap: 6 }}>
+            <span className="muted small">Invités :</span>
+            {[1, 2, 4].map((n) => (
+              <button key={n} className="chip" onClick={() => onServings(servings + n)}>+{n}</button>
+            ))}
+          </div>
+        )}
+        {forPeople && item.day && !hasLeftovers && (
+          <button className="btn" onClick={onLeftovers}>🍱 Cuisiner ×2 pour les restes ({item.meal === 'soir' ? 'midi du lendemain' : 'le soir'})</button>
+        )}
+        {hasLeftovers && <p className="muted small" style={{ margin: 0 }}>🍱 Cuisiné en double : les restes sont prévus au repas suivant.</p>}
+        {item.leftover_of && <p className="muted small" style={{ margin: 0 }}>Retirer ces restes remet le plat d'origine en quantité simple.</p>}
         {recipe && <Link className="btn" to={`/recettes/${recipe.id}`}>Ouvrir la recette</Link>}
         <button className="btn" onClick={onMove}>{item.day ? 'Déplacer…' : 'Placer dans un créneau…'}</button>
         {item.day && <button className="btn" onClick={onToBasket}>Remettre sans jour précis</button>}
@@ -265,6 +311,8 @@ function ItemSheet({ item, name, recipe, onClose, onServings, onMove, onToBasket
     </Sheet>
   )
 }
+
+const QUICK = [['🚫', 'Absents'], ['🍽', 'Resto'], ['🥡', 'Restes'], ['🥪', 'Sur le pouce']] as const
 
 function RecipePicker({ title, householdId, basket, basketName, onPickRecipe, onPickBasket, onFreeText, onClose }: {
   title: string; householdId: string; basket: WeekItem[]; basketName: (i: WeekItem) => string
@@ -306,6 +354,11 @@ function RecipePicker({ title, householdId, basket, basketName, onPickRecipe, on
             </button>
           ))}
         </div>
+        <div className="row wrap" style={{ gap: 6 }}>
+          {QUICK.map(([icon, label]) => (
+            <button key={label} className="chip" onClick={() => onFreeText(label)}>{icon} {label}</button>
+          ))}
+        </div>
         <form className="row" onSubmit={(e) => { e.preventDefault(); if (free.trim()) onFreeText(free.trim()) }}>
           <input style={{ flex: 1, minWidth: 0 }} value={free} onChange={(e) => setFree(e.target.value)}
             placeholder="Ou autre chose : restes, resto…" aria-label="Texte libre" />
@@ -314,6 +367,76 @@ function RecipePicker({ title, householdId, basket, basketName, onPickRecipe, on
         {q && norm(q).length > 0 && results?.length === 0 && (
           <button className="btn ghost small-btn" onClick={() => onFreeText(q.trim())}>Ajouter « {q.trim()} » comme texte libre</button>
         )}
+      </div>
+    </Sheet>
+  )
+}
+
+function FillSheet({ start, today, items, recipes, lastCooked, onClose, onApply }: {
+  start: string; today: string; items: WeekItem[]; recipes: Recipe[]; lastCooked: Map<string, string | null>
+  onClose: () => void; onApply: (p: Proposal[]) => void
+}) {
+  const season = currentSeason()
+  const [meals, setMeals] = useState<Meal[]>(['midi', 'soir'])
+  const [leftovers, setLeftovers] = useState(false)
+  const [result, setResult] = useState(() => proposeWeek({ start, today, meals, items, recipes, lastCooked, season, leftovers }))
+
+  function redo(next: { meals?: Meal[]; leftovers?: boolean }) {
+    const m = next.meals ?? meals
+    const l = next.leftovers ?? leftovers
+    setMeals(m)
+    setLeftovers(l)
+    setResult(proposeWeek({ start, today, meals: m, items, recipes, lastCooked, season, leftovers: l }))
+  }
+  const toggleMeal = (m: Meal) => redo({ meals: meals.includes(m) ? meals.filter((x) => x !== m) : [...meals, m] })
+  const { proposals, unfilled } = result
+  const cooked = proposals.filter((p) => p.leftoverOf == null).length
+
+  return (
+    <Sheet title="Remplir ma semaine" onClose={onClose}>
+      <div className="stack">
+        <div className="row wrap" style={{ gap: 6 }}>
+          {MEALS.map((m) => (
+            <button key={m.id} className={meals.includes(m.id) ? 'chip on' : 'chip'} aria-pressed={meals.includes(m.id)}
+              onClick={() => toggleMeal(m.id)}>{m.label}</button>
+          ))}
+          <button className={leftovers ? 'chip on' : 'chip'} aria-pressed={leftovers} onClick={() => redo({ leftovers: !leftovers })}>
+            🍱 Restes du soir le midi
+          </button>
+        </div>
+        {proposals.length === 0 ? (
+          <p className="muted">{unfilled ? 'Pas de recette disponible : ajoute des plats à ton carnet (ou vérifie leurs saisons).' : 'Tous les créneaux sont déjà remplis.'}</p>
+        ) : (
+          <ul className="plain fill-list">
+            {proposals.map((p, i) => (
+              <li key={`${p.day}${p.meal}`} className="fill-row">
+                <div className="fill-when muted small">{dayLabel(p.day).split(' ').slice(0, 2).join(' ')} · {p.meal}</div>
+                <div className="fill-what">
+                  {p.leftoverOf != null ? <span className="muted">🍱 Restes : {proposals[p.leftoverOf]?.recipe?.name}</span>
+                    : p.basketItem && !p.recipe ? <span>{p.basketItem.free_text}</span>
+                    : <span>{p.recipe?.name}{p.basketItem && <span className="muted small"> (déjà choisie)</span>}</span>}
+                </div>
+                {p.leftoverOf == null && (
+                  <div className="row" style={{ gap: 2 }}>
+                    <button className="btn ghost icon" aria-label="Autre recette"
+                      onClick={() => setResult({ unfilled, proposals: swapProposal(proposals, i, recipes, items, lastCooked, season) })}>🔄</button>
+                    <button className="btn ghost icon" aria-label="Laisser libre"
+                      onClick={() => setResult({ unfilled, proposals: dropProposal(proposals, i) })}>✕</button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {proposals.length > 0 && unfilled > 0 && (
+          <p className="muted small" style={{ margin: 0 }}>
+            {unfilled} créneau{unfilled > 1 ? 'x restent libres' : ' reste libre'} : plus assez de recettes de saison dans le carnet.
+          </p>
+        )}
+        <p className="muted small" style={{ margin: 0 }}>Plats de saison, bien notés, pas faits récemment, rapides en semaine. 🔄 pour changer, ✕ pour laisser libre.</p>
+        <button className="btn primary" disabled={proposals.length === 0} onClick={() => onApply(proposals)}>
+          Valider{cooked ? ` (${cooked} repas)` : ''}
+        </button>
       </div>
     </Sheet>
   )
