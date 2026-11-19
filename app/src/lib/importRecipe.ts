@@ -8,6 +8,7 @@ type Imported = {
   category: string
   seasons: string[]
   servings: number
+  yield_unit: string | null
   prep_minutes: number | null
   cook_minutes: number | null
   ingredients: { quantity: number | null; unit: string | null; name: string; note: string | null; aisle: string | null }[]
@@ -44,6 +45,7 @@ export async function importRecipe(input: string, aisles: Aisle[]): Promise<{ dr
       category: r.category,
       seasons: r.seasons,
       servings: Math.max(1, r.servings || 4),
+      yield_unit: r.yield_unit || null,
       prep_minutes: r.prep_minutes || null,
       cook_minutes: r.cook_minutes || null,
       steps: r.steps,

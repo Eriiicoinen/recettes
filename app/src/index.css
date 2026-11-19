@@ -186,3 +186,6 @@ textarea { min-height: 0; resize: vertical; line-height: 1.5; }
 .import-card { border-color: var(--accent); background: var(--accent-soft); }
 .import-card textarea { background: var(--surface); }
 .import-done { border-color: var(--accent); }
+.yield-row { display: flex; gap: 6px; }
+.yield-row input:first-child { width: 72px; flex: none; }
+.yield-row input:last-child { flex: 1; min-width: 0; }

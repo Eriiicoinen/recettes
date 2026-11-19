@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
-  deleteRecipe, formatDuration, formatQty, getRecipe, listStats, relativeDate, setFavorite,
+  deleteRecipe, formatDuration, formatQty, getRecipe, listStats, relativeDate, setFavorite, yieldLabel,
   type Recipe, type RecipeLine, type RecipeStats,
 } from '../lib/recipes'
 import { supabase } from '../lib/supabase'
@@ -110,9 +110,9 @@ export default function RecipeDetail() {
       <div className="card stack">
         <div className="row between">
           <h2>Ingrédients</h2>
-          <div className="stepper" aria-label="Nombre de parts">
+          <div className="stepper" aria-label="Quantité">
             <button onClick={() => setServings(Math.max(1, servings - 1))} aria-label="Moins de parts">−</button>
-            <span>{servings} pers.</span>
+            <span>{yieldLabel(servings, recipe.yield_unit)}</span>
             <button onClick={() => setServings(servings + 1)} aria-label="Plus de parts">+</button>
           </div>
         </div>

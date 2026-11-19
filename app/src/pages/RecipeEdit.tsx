@@ -212,11 +212,18 @@ export default function RecipeEdit() {
             {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
           </select>
         </label>
-        <label className="field">
-          <span>Parts</span>
-          <input type="number" min={1} inputMode="numeric" value={draft.servings}
-            onChange={(e) => set('servings', Math.max(1, Number(e.target.value) || 1))} />
-        </label>
+        <div className="field">
+          <span>Pour</span>
+          <div className="yield-row">
+            <input type="number" min={1} inputMode="numeric" value={draft.servings} aria-label="Quantité produite"
+              onChange={(e) => set('servings', Math.max(1, Number(e.target.value) || 1))} />
+            <input list="yield-units" placeholder="personnes" aria-label="Unité (vide = personnes)"
+              value={draft.yield_unit ?? ''} onChange={(e) => set('yield_unit', e.target.value || null)} />
+            <datalist id="yield-units">
+              {['cookies', 'pièces', 'parts', 'muffins', 'crêpes', 'pots', 'verrines', 'cake', 'tarte', 'bocaux'].map((u) => <option key={u} value={u} />)}
+            </datalist>
+          </div>
+        </div>
         <label className="field">
           <span>Préparation (min)</span>
           <input type="number" min={0} inputMode="numeric" value={draft.prep_minutes ?? ''}

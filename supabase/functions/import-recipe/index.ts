@@ -26,7 +26,8 @@ function schemaFor(aisles: string[]) {
     name: z.string(),
     category: z.enum(CATEGORIES),
     seasons: z.array(z.enum(SEASONS)).describe('Saisons où les ingrédients principaux sont de saison en France. Vide = toute l\'année.'),
-    servings: z.number().int().describe('Nombre de parts / personnes'),
+    servings: z.number().int().describe('Quantité produite par la recette, telle qu\'indiquée par la source (ex. 4 pour « 4 personnes », 20 pour « 20 cookies », 1 pour « 1 cake »)'),
+    yield_unit: z.string().nullable().describe('Ce que compte servings quand ce ne sont PAS des personnes/parts, au pluriel et en minuscules : « cookies », « pièces », « pots », « verrines », « crêpes », « cake », « tarte (moule 24 cm) ». null si ce sont des personnes ou des parts.'),
     prep_minutes: z.number().int().nullable(),
     cook_minutes: z.number().int().nullable(),
     ingredients: z.array(z.object({
@@ -49,6 +50,7 @@ Règles :
 - Reprends fidèlement les quantités et les étapes de la source ; n'invente pas d'ingrédient. Tu peux reformuler une étape pour la rendre claire et concise.
 - Noms d'ingrédients : au singulier, majuscule initiale, réutilise exactement un nom de la liste « ingrédients déjà connus » quand c'est le même produit.
 - Rayon : choisis le rayon de magasin le plus probable dans la liste fournie.
+- Rendement : distingue bien un nombre de personnes d'un nombre de pièces. « Pour 20 cookies », « 12 muffins », « 1 cake », « 6 pots » → servings = ce nombre et yield_unit = « cookies », « muffins », « cake », « pots ». Les données schema.org (recipeYield) indiquent souvent seulement un nombre : vérifie dans le titre, les étapes ou le texte si ce nombre désigne des pièces. yield_unit = null uniquement pour des personnes ou des parts.
 - Si le contenu ne contient pas de recette (page d'erreur, article, accueil), mets is_recipe à false et remplis le reste au mieux avec des valeurs vides.`
 
 const BROWSER_HEADERS = {
@@ -83,7 +85,7 @@ async function fetchDirect(url: URL): Promise<Direct> {
 async function fetchViaClaude(anthropic: Anthropic, url: string): Promise<string | null> {
   const messages: Anthropic.MessageParam[] = [{
     role: 'user',
-    content: `Lis la page ${url} avec l'outil web_fetch et recopie fidèlement la recette qu'elle contient : titre, nombre de parts, temps de préparation et de cuisson, liste complète des ingrédients avec leurs quantités, et toutes les étapes. Texte brut, sans commentaire. Si la page ne contient pas de recette ou ne peut pas être lue, réponds uniquement : AUCUNE RECETTE`,
+    content: `Lis la page ${url} avec l'outil web_fetch et recopie fidèlement la recette qu'elle contient : titre, rendement tel qu'écrit (ex. « 4 personnes », « 20 cookies »), temps de préparation et de cuisson, liste complète des ingrédients avec leurs quantités, et toutes les étapes. Texte brut, sans commentaire. Si la page ne contient pas de recette ou ne peut pas être lue, réponds uniquement : AUCUNE RECETTE`,
   }]
   for (let i = 0; i < 4; i++) {
     const response = await anthropic.messages.create({

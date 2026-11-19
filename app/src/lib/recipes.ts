@@ -13,6 +13,8 @@ export type Recipe = {
   seasons: string[]
   rating: number | null
   servings: number
+  /** Ce que compte servings : null = personnes ; sinon « cookies », « pots »… */
+  yield_unit: string | null
   prep_minutes: number | null
   cook_minutes: number | null
   steps: string[]
@@ -51,7 +53,7 @@ export type RecipeStats = { recipe_id: string; last_cooked: string | null; times
 export type RecipeDraft = Omit<Recipe, 'id' | 'household_id' | 'created_at' | 'updated_at'> & { lines: RecipeLine[] }
 
 export const emptyDraft = (): RecipeDraft => ({
-  name: '', category: 'Plat', seasons: [], rating: null, servings: 4, prep_minutes: null, cook_minutes: null,
+  name: '', category: 'Plat', seasons: [], rating: null, servings: 4, yield_unit: null, prep_minutes: null, cook_minutes: null,
   steps: [], notes: null, tags: [], is_favorite: false, source_kind: 'manual', source_url: null, photo_url: null,
   lines: [],
 })
@@ -146,6 +148,7 @@ export async function saveRecipe(householdId: string, userId: string, draft: Rec
   // Uniquement les colonnes modifiables (le brouillon peut contenir id, dates… d'une recette chargée)
   const payload = {
     category: fields.category, seasons: fields.seasons, rating: fields.rating, servings: fields.servings,
+    yield_unit: fields.yield_unit?.trim().toLowerCase() || null,
     prep_minutes: fields.prep_minutes, cook_minutes: fields.cook_minutes, is_favorite: fields.is_favorite,
     source_kind: fields.source_kind, photo_url: fields.photo_url,
     name: fields.name.trim(),
@@ -214,6 +217,11 @@ export function formatQty(n: number | null): string {
   if (whole < 10) for (const [v, sym] of frac) if (Math.abs(rest - v) < 0.02) return (whole ? whole : '') + sym
   const r = n >= 100 ? Math.round(n) : Math.round(n * 10) / 10
   return String(r).replace('.', ',')
+}
+
+/** 4, null → « 4 pers. » ; 20, « cookies » → « 20 cookies » */
+export function yieldLabel(n: number, unit: string | null) {
+  return unit ? `${n} ${unit}` : `${n} pers.`
 }
 
 export function formatDuration(min: number | null) {
