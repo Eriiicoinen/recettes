@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { useSession } from '../lib/session'
 import { supabase, type Member } from '../lib/supabase'
 import { useRealtime } from '../lib/realtime'
+import NotificationsCard from '../components/NotificationsCard'
+import { disablePush } from '../lib/push'
 import ConnectorCard from './ConnectorCard'
 
 export default function Settings() {
@@ -79,12 +81,14 @@ export default function Settings() {
         </p>
       </div>
 
+      {session && <NotificationsCard householdId={household.id} userId={session.user.id} />}
+
       <ConnectorCard householdId={household.id} />
 
       <div className="card stack">
         <div className="muted small">Connecté en tant que</div>
         <div>{session?.user.email}</div>
-        <button className="btn ghost danger" onClick={() => supabase.auth.signOut()}>Se déconnecter</button>
+        <button className="btn ghost danger" onClick={() => { void disablePush().catch(() => {}).finally(() => supabase.auth.signOut()) }}>Se déconnecter</button>
       </div>
     </section>
   )

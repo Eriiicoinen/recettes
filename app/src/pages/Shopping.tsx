@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import Sheet from '../components/Sheet'
+import PackEditor from '../components/shopping/PackEditor'
 import RecurringSheet from '../components/shopping/RecurringSheet'
 import { guessAisle } from '../lib/aisleGuess'
 import { cacheGet, cacheSet, flush, onQueueChange, run } from '../lib/offline'
 import { ingKey, listAisles, listIngredients, type Aisle, type Ingredient } from '../lib/recipes'
 import { useSession } from '../lib/session'
 import {
-  addRecurring, formatAmount, listItems, listRecurring, listText, removeRecurring, syncList, type RecurringItem, type ShoppingItem,
+  addRecurring, formatAmount, packAmount, listItems, listRecurring, listText, removeRecurring, syncList, type RecurringItem, type ShoppingItem,
 } from '../lib/shopping'
 import { useRealtime } from '../lib/realtime'
 import { supabase, type Member } from '../lib/supabase'
 import { addDays, mondayOf, relativeWeek, todayISO, weekLabel } from '../lib/week'
 
-type Cache = { items: ShoppingItem[]; aisles: Aisle[]; members: Member[]; missing: string[] }
+type Cache = { items: ShoppingItem[]; aisles: Aisle[]; members: Member[]; missing: string[]; ingredients?: Ingredient[] }
 
 export default function Shopping() {
   const { household, me } = useSession()
@@ -69,7 +70,7 @@ export default function Shopping() {
       setRecurring(rec)
       if (miss) setMissing(miss)
       setError('')
-      persist({ items: list, aisles: a, members: m, ...(miss ? { missing: miss } : {}) })
+      persist({ items: list, aisles: a, members: m, ingredients: ing, ...(miss ? { missing: miss } : {}) })
     } catch (e) {
       if (n !== loadSeq.current) return
       const cached = cacheGet<Cache>(cacheKey)
@@ -78,6 +79,7 @@ export default function Shopping() {
         setAisles(cached.aisles)
         setMembers(cached.members)
         setMissing(cached.missing)
+        setIngredients(cached.ingredients ?? [])
       } else if (!cached && itemsRef.current === null) {
         setItems([])
       }
@@ -92,6 +94,7 @@ export default function Shopping() {
     setAisles(cached?.aisles ?? [])
     setMembers(cached?.members ?? [])
     setMissing(cached?.missing ?? [])
+    setIngredients(cached?.ingredients ?? [])
     void load(true)
     const b = burst.current
     return () => { clearTimeout(b.timer) }
@@ -154,6 +157,13 @@ export default function Shopping() {
     if (i.ingredient_id) await safe(() => run({ kind: 'update', table: 'ingredients', id: i.ingredient_id!, patch: { aisle_id: aisleId } }))
   }
 
+  async function setPack(i: ShoppingItem, size: number | null, label: string | null) {
+    if (!i.ingredient_id) return
+    const patch = { pack_size: size, pack_label: label, pack_unit: size ? i.unit ?? '' : null }
+    setIngredients((list) => list.map((x) => (x.id === i.ingredient_id ? { ...x, ...patch } : x)))
+    await safe(() => run({ kind: 'update', table: 'ingredients', id: i.ingredient_id!, patch }))
+  }
+
   async function setStaple(i: ShoppingItem, value: boolean) {
     update(i, { is_staple: value })
     if (i.ingredient_id) await safe(() => run({ kind: 'update', table: 'ingredients', id: i.ingredient_id!, patch: { is_staple: value } }))
@@ -186,7 +196,7 @@ export default function Shopping() {
   }
 
   async function shareList() {
-    const text = listText(week, groups, staples)
+    const text = listText(week, groups, staples, (i) => amounts(i).main)
     try {
       if (navigator.share) await navigator.share({ title: 'Liste de courses', text })
       else { await navigator.clipboard.writeText(text); setShared('Liste copiée ✓') }
@@ -222,6 +232,13 @@ export default function Shopping() {
   // ------------------------------------------------------------------ affichage
 
   const aisleOrder = useMemo(() => new Map(aisles.map((a) => [a.id, a])), [aisles])
+  const ingById = useMemo(() => new Map(ingredients.map((x) => [x.id, x])), [ingredients])
+  /** Quantité à prendre en magasin (« 2 paquets de 150 g ») et quantité exacte nécessaire. */
+  const amounts = (i: ShoppingItem) => {
+    const exact = formatAmount(i.quantity, i.unit)
+    const pack = i.ingredient_id ? packAmount(i.quantity, i.unit, ingById.get(i.ingredient_id)) : null
+    return { main: pack ?? exact, detail: pack ? exact : '' }
+  }
   const memberName = (uid: string | null) => members.find((m) => m.user_id === uid)?.display_name ?? ''
 
   const groups = useMemo(() => {
@@ -251,7 +268,8 @@ export default function Shopping() {
         <span className="box" aria-hidden>{i.checked ? '✓' : ''}</span>
         <span className="shop-main">
           <span className="shop-label">{i.label}{i.origin === 'recurring' && <span className="muted small" aria-label="chaque semaine"> 🔁</span>}</span>
-          {formatAmount(i.quantity, i.unit) && <span className="shop-qty">{formatAmount(i.quantity, i.unit)}</span>}
+          {amounts(i).main && <span className="shop-qty">{amounts(i).main}</span>}
+          {amounts(i).detail && <span className="muted small">({amounts(i).detail})</span>}
           {i.checked && i.checked_by && i.checked_by !== me?.user_id && <span className="muted small"> · {memberName(i.checked_by)}</span>}
         </span>
       </button>
@@ -359,7 +377,10 @@ export default function Shopping() {
       {selected && (
         <Sheet title={selected.label} onClose={() => setSelected(null)}>
           <div className="stack">
-            {formatAmount(selected.quantity, selected.unit) && <div className="shop-qty big">{formatAmount(selected.quantity, selected.unit)}</div>}
+            {amounts(selected).main && (
+              <div><span className="shop-qty big">{amounts(selected).main}</span>
+                {amounts(selected).detail && <span className="muted"> · il en faut {amounts(selected).detail}</span>}</div>
+            )}
             {selected.sources.length > 0 && <p className="muted small" style={{ margin: 0 }}>Pour : {selected.sources.join(', ')}</p>}
             {selected.origin === 'manual' && <p className="muted small" style={{ margin: 0 }}>Ajouté à la main</p>}
             {selected.origin === 'recurring' && <p className="muted small" style={{ margin: 0 }}>🔁 Ajouté chaque semaine</p>}
@@ -371,6 +392,12 @@ export default function Shopping() {
               </select>
               {selected.ingredient_id && <small className="muted">Retenu pour les prochaines listes.</small>}
             </label>
+            {selected.ingredient_id && selected.origin === 'menu' && (
+              <PackEditor key={selected.id} unit={selected.unit}
+                size={(() => { const g = ingById.get(selected.ingredient_id!); return g && (g.pack_unit ?? '') === (selected.unit ?? '') ? g.pack_size : null })()}
+                label={ingById.get(selected.ingredient_id)?.pack_label ?? null}
+                onSave={(size, label) => void setPack(selected, size, label)} />
+            )}
             {selected.ingredient_id && (
               <label className="toggle-row">
                 <input type="checkbox" checked={selected.is_staple} onChange={(e) => void setStaple(selected, e.target.checked)} />

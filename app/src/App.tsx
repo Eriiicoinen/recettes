@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { HashRouter, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom'
 import { SessionProvider, useSession } from './lib/session'
 import { configMissing } from './lib/supabase'
+import Ideas from './pages/Ideas'
 import Login from './pages/Login'
 import Onboarding from './pages/Onboarding'
 import RecipeDetail from './pages/RecipeDetail'
@@ -60,6 +61,7 @@ function Shell() {
           <Route path="/recettes/nouvelle" element={<RecipeEdit />} />
           <Route path="/recettes/:id" element={<RecipeDetail />} />
           <Route path="/recettes/:id/modifier" element={<RecipeEdit />} />
+          <Route path="/idees" element={<Ideas />} />
           <Route path="/semaine" element={<Week />} />
           <Route path="/courses" element={<Shopping />} />
           <Route path="/reglages" element={<Settings />} />

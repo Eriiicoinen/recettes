@@ -37,6 +37,10 @@ export type Ingredient = {
   default_unit: string | null
   aisle_id: string | null
   is_staple: boolean
+  /** Conditionnement en magasin, dans l'unité pack_unit (g, ml, '' = pièces) */
+  pack_size: number | null
+  pack_unit: string | null
+  pack_label: string | null
 }
 
 export type Aisle = { id: string; name: string; position: number }
@@ -132,7 +136,7 @@ export async function listStats(): Promise<Map<string, RecipeStats>> {
 
 export async function listIngredients(householdId: string): Promise<Ingredient[]> {
   const { data, error } = await supabase.from('ingredients')
-    .select('id, name, default_unit, aisle_id, is_staple').eq('household_id', householdId).order('name')
+    .select('id, name, default_unit, aisle_id, is_staple, pack_size, pack_unit, pack_label').eq('household_id', householdId).order('name')
   if (error) throw error
   return data as Ingredient[]
 }

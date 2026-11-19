@@ -143,7 +143,7 @@ Done when:
 4. **M3 – Claude connector** (MCP server, `add_recipe`).
 5. **M4 – Weekly basket/menu** + ideas.
 6. **M5 – Shopping list** + offline + live sync. → **MVP, switch off the Sheet.**
-7. **M6 – P1 items** (done: fill my week, leftovers / away / guests, household size, recurring items, share list, post-meal rating, timers, photo import · then: repas sans recette, recipe photos, repeat a past week, share a recipe, offline recipes, aisle guess for items added via Claude · remaining: list period).
+7. **M6 – P1 items** (done: fill my week, leftovers / away / guests, household size, recurring items, share list, post-meal rating, timers, photo import · then: repas sans recette, recipe photos, repeat a past week, share a recipe, offline recipes, aisle guess for items added via Claude, « que faire avec ce que j'ai ? », Sunday reminder notification, pack sizes on the list · remaining: list period).
 8. **M7 – P2 items.**
 
 ## 8. Decisions (2026-11-19)

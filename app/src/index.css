@@ -319,3 +319,9 @@ textarea { min-height: 0; resize: vertical; line-height: 1.5; }
 .recipe-card { gap: 12px; }
 .copy-week { align-items: flex-start; }
 .copy-week-names { display: block; margin-top: 2px; }
+
+/* ---------- que faire avec ce que j'ai ---------- */
+.ok { color: var(--accent); font-weight: 600; }
+.idea { border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.idea:first-of-type { border-top: 0; padding-top: 0; }
+.idea-head { display: flex; flex-direction: column; gap: 2px; text-align: left; background: transparent; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; }

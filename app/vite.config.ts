@@ -40,6 +40,8 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: `${base}index.html`,
+        // Réception des notifications (rappel du dimanche)
+        importScripts: ['push-sw.js'],
       },
     }),
   ],

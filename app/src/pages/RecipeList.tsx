@@ -95,6 +95,7 @@ export default function RecipeList() {
       </div>
 
       {household && !query && <ReviewPrompt householdId={household.id} />}
+      {!query && <Link to="/idees" className="btn">🤔 Que faire avec ce que j'ai ?</Link>}
 
       <div className="search">
         <input type="search" value={query} onChange={(e) => setQuery(e.target.value)}

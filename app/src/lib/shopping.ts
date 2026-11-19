@@ -73,10 +73,29 @@ export async function removeRecurring(id: string) {
   if (error) throw error
 }
 
+// ------------------------------------------------------------------ conditionnements
+
+export const PACK_LABELS = ['paquet', 'boîte', 'bouteille', 'brique', 'sachet', 'pot', 'barquette', 'filet', 'botte', 'tranche', 'lot']
+
+/** Unité de la ligne ramenée à celle du stockage : g, ml, ou '' (pièces). */
+export const unitKey = (unit: string | null) => unit ?? ''
+
+type Pack = { pack_size: number | null; pack_unit: string | null; pack_label: string | null }
+
+/** « 2 paquets de 150 g » pour 260 g, si l'ingrédient a un conditionnement dans la même unité ; sinon null. */
+export function packAmount(q: number | null, unit: string | null, pack: Pack | undefined): string | null {
+  if (q == null || !pack?.pack_size || (pack.pack_unit ?? '') !== unitKey(unit)) return null
+  const n = Math.max(1, Math.ceil(q / pack.pack_size - 1e-9))
+  const label = pack.pack_label || 'paquet'
+  const plural = n > 1 && !/[sx]$/.test(label) ? `${label}s` : label
+  return `${n} ${plural} de ${formatAmount(pack.pack_size, unit) || pack.pack_size}`
+}
+
 /** Liste en texte simple, par rayon, pour WhatsApp, SMS ou les notes. */
-export function listText(week: string, groups: { name: string; list: ShoppingItem[] }[], staples: ShoppingItem[]) {
+export function listText(week: string, groups: { name: string; list: ShoppingItem[] }[], staples: ShoppingItem[],
+  amount: (i: ShoppingItem) => string = (i) => formatAmount(i.quantity, i.unit)) {
   const d = new Date(`${week}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
-  const line = (i: ShoppingItem) => `- ${i.label}${formatAmount(i.quantity, i.unit) ? ` : ${formatAmount(i.quantity, i.unit)}` : ''}`
+  const line = (i: ShoppingItem) => `- ${i.label}${amount(i) ? ` : ${amount(i)}` : ''}`
   const parts = [`🛒 Courses (semaine du ${d})`]
   for (const g of groups) parts.push(`\n${g.name}\n${g.list.map(line).join('\n')}`)
   if (staples.length) parts.push(`\nÀ vérifier au placard\n${staples.map(line).join('\n')}`)
