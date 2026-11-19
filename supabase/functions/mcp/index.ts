@@ -139,6 +139,32 @@ async function toolDefinitions(ctx: Ctx) {
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     {
+      name: 'get_shopping_list',
+      title: 'Voir la liste de courses',
+      description: 'Renvoie la liste de courses d\'une semaine, calculée à partir du menu (quantités cumulées) plus les articles ajoutés à la main, rangée par rayon. Indique ce qui est déjà coché.',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { week: { type: 'string', description: '« this » (défaut), « next », ou une date AAAA-MM-JJ' } },
+      },
+      annotations: { readOnlyHint: false, openWorldHint: false },
+    },
+    {
+      name: 'add_shopping_item',
+      title: 'Ajouter un article à la liste de courses',
+      description: 'Ajoute un ou plusieurs articles hors recettes à la liste de courses (lait, éponges…). Ils restent dans la liste jusqu\'à être cochés.',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['items'],
+        properties: {
+          items: { type: 'array', items: { type: 'string' }, description: 'Ex. ["Lait", "Éponges", "Café"]' },
+          week: { type: 'string', description: '« this » (défaut), « next », ou une date AAAA-MM-JJ' },
+        },
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    {
       name: 'get_recipe',
       title: 'Lire une recette du carnet',
       description: 'Renvoie la fiche complète d\'une recette du carnet (ingrédients avec quantités, étapes, notes) à partir de son id (obtenu avec search_recipes).',
@@ -337,6 +363,60 @@ async function getWeek(ctx: Ctx, a: Record<string, unknown>) {
   return text(lines.join('\n'))
 }
 
+// ------------------------------------------------------------------ courses
+
+function fmtAmount(q: number | null, unit: string | null) {
+  if (q == null) return ''
+  if (unit === 'g') return q >= 1000 ? `${fmtQty(q / 1000)} kg` : `${fmtQty(q)} g`
+  if (unit === 'ml') return q >= 1000 ? `${fmtQty(q / 1000)} l` : q >= 100 && q % 10 === 0 ? `${fmtQty(q / 10)} cl` : `${fmtQty(q)} ml`
+  return [fmtQty(q), unit].filter(Boolean).join(' ')
+}
+
+async function getShoppingList(ctx: Ctx, a: Record<string, unknown>) {
+  const week = resolveWeek(a.week)
+  const { data: sync, error: syncErr } = await ctx.db.rpc('sync_shopping_list', {
+    p_household: ctx.householdId, p_week: week, p_carry_manual: week === resolveWeek('this'),
+  })
+  if (syncErr) return text(`Calcul impossible : ${syncErr.message}`, true)
+  const [{ data: items }, { data: aisles }] = await Promise.all([
+    ctx.db.from('shopping_items').select('label, quantity, unit, aisle_id, sources, is_staple, hidden, checked, origin')
+      .eq('household_id', ctx.householdId).eq('week_start', week).order('label'),
+    ctx.db.from('aisles').select('id, name, position').eq('household_id', ctx.householdId).order('position'),
+  ])
+  type It = { label: string; quantity: number | null; unit: string | null; aisle_id: string | null; sources: string[]; is_staple: boolean; hidden: boolean; checked: boolean; origin: string }
+  const list = ((items ?? []) as It[]).filter((i) => !i.hidden)
+  if (!list.length) return text(`Liste vide pour la semaine du ${week} : ajoute des recettes au menu (add_to_week).`)
+  const line = (i: It) => `- ${i.checked ? '[x] ' : ''}${i.label}${fmtAmount(i.quantity, i.unit) ? ` : ${fmtAmount(i.quantity, i.unit)}` : ''}${i.sources.length ? ` (${i.sources.join(', ')})` : ''}`
+  const out = [`Liste de courses — semaine du ${week}`]
+  for (const aisle of [...(aisles ?? []), { id: null, name: 'Sans rayon' }]) {
+    const inAisle = list.filter((i) => !i.is_staple && (i.aisle_id ?? null) === aisle.id)
+    if (inAisle.length) out.push('', `${aisle.name} :`, ...inAisle.map(line))
+  }
+  const staples = list.filter((i) => i.is_staple)
+  if (staples.length) out.push('', 'Placard (à vérifier) :', ...staples.map(line))
+  const missing = (sync?.missing ?? []) as string[]
+  if (missing.length) out.push('', `Recettes sans ingrédients saisis (absentes de la liste) : ${missing.join(', ')}`)
+  out.push('', `Liste : ${APP_URL}/courses${week === resolveWeek('this') ? '' : `?s=${week}`}`)
+  return text(out.join('\n'))
+}
+
+async function addShoppingItem(ctx: Ctx, a: Record<string, unknown>) {
+  const labels = (Array.isArray(a.items) ? a.items : []).map((s) => String(s).trim()).filter(Boolean).slice(0, 50)
+  if (!labels.length) return text('Aucun article à ajouter.', true)
+  const week = resolveWeek(a.week)
+  const [{ data: known }, { data: aisles }] = await Promise.all([
+    ctx.db.from('ingredients').select('name, aisle_id').eq('household_id', ctx.householdId),
+    ctx.db.from('aisles').select('id, name').eq('household_id', ctx.householdId),
+  ])
+  const aisleOf = new Map((known ?? []).map((k) => [ingKey(k.name), k.aisle_id as string | null]))
+  const other = (aisles ?? []).find((x) => x.name === 'Autre')?.id ?? null
+  const { error } = await ctx.db.from('shopping_items').insert(labels.map((l) => ({
+    household_id: ctx.householdId, week_start: week, origin: 'manual', label: capitalize(l), aisle_id: aisleOf.get(ingKey(l)) ?? other,
+  })))
+  if (error) return text(`Ajout impossible : ${error.message}`, true)
+  return text(`Ajouté à la liste de courses : ${labels.join(', ')}. Liste : ${APP_URL}/courses`)
+}
+
 // ------------------------------------------------------------------ JSON-RPC
 
 async function handle(msg: RpcMessage, ctx: Ctx): Promise<unknown | null> {
@@ -353,7 +433,7 @@ async function handle(msg: RpcMessage, ctx: Ctx): Promise<unknown | null> {
         serverInfo: { name: 'recettes', title: 'Recettes & Menus', version: '1.0.0' },
         instructions:
           "Carnet de recettes familial et menu de la semaine. Utilise add_recipe quand l'utilisateur veut garder une recette, " +
-          "search_recipes puis get_recipe pour retrouver une recette existante, get_week pour voir le menu et add_to_week pour le remplir. " +
+          "search_recipes puis get_recipe pour retrouver une recette existante, get_week pour voir le menu et add_to_week pour le remplir, get_shopping_list et add_shopping_item pour les courses. " +
           "Tout est en français.",
       })
     }
@@ -370,6 +450,8 @@ async function handle(msg: RpcMessage, ctx: Ctx): Promise<unknown | null> {
         if (name === 'get_recipe') return reply(await getRecipe(ctx, args))
         if (name === 'add_to_week') return reply(await addToWeek(ctx, args))
         if (name === 'get_week') return reply(await getWeek(ctx, args))
+        if (name === 'get_shopping_list') return reply(await getShoppingList(ctx, args))
+        if (name === 'add_shopping_item') return reply(await addShoppingItem(ctx, args))
         return fail(-32602, `Outil inconnu : ${name}`)
       } catch (e) {
         return reply(text(`Erreur : ${(e as Error).message}`, true))

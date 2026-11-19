@@ -4,11 +4,11 @@ import { SessionProvider, useSession } from './lib/session'
 import { configMissing } from './lib/supabase'
 import Login from './pages/Login'
 import Onboarding from './pages/Onboarding'
-import Placeholder from './pages/Placeholder'
 import RecipeDetail from './pages/RecipeDetail'
 import RecipeEdit from './pages/RecipeEdit'
 import RecipeList from './pages/RecipeList'
 import Settings from './pages/Settings'
+import Shopping from './pages/Shopping'
 import Week from './pages/Week'
 
 const TABS = [
@@ -61,7 +61,7 @@ function Shell() {
           <Route path="/recettes/:id" element={<RecipeDetail />} />
           <Route path="/recettes/:id/modifier" element={<RecipeEdit />} />
           <Route path="/semaine" element={<Week />} />
-          <Route path="/courses" element={<Placeholder title="Courses" text="La liste de courses arrive à l'étape M5." />} />
+          <Route path="/courses" element={<Shopping />} />
           <Route path="/reglages" element={<Settings />} />
           <Route path="*" element={<Navigate to="/recettes" replace />} />
         </Routes>

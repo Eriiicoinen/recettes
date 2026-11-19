@@ -246,3 +246,34 @@ textarea { min-height: 0; resize: vertical; line-height: 1.5; }
 .slot-add.drop { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .ideas li { padding: 6px 0; border-bottom: 1px solid var(--border); }
 .ideas li:last-child { border-bottom: 0; }
+
+/* ---------- M5 : courses ---------- */
+.offline-banner { background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 10px; font-size: .9rem; font-weight: 600; }
+.warn { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); }
+.aisle { display: flex; flex-direction: column; gap: 6px; }
+.aisle-title { font-size: .85rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 4px 0 0; display: inline-flex; gap: 6px; align-items: baseline; }
+.collapsible summary { cursor: pointer; list-style: none; min-height: 40px; display: flex; align-items: center; }
+.collapsible summary::-webkit-details-marker { display: none; }
+.collapsible summary::before { content: '▸'; color: var(--muted); margin-right: 8px; transition: transform .15s; }
+.collapsible[open] summary::before { transform: rotate(90deg); }
+.shop-list { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.shop-row { display: flex; align-items: stretch; border-bottom: 1px solid var(--border); }
+.shop-row:last-child { border-bottom: 0; }
+.shop-check {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; text-align: left;
+  min-height: 56px; padding: 8px 4px 8px 14px; border: 0; background: transparent; cursor: pointer;
+}
+.shop-check:active { background: var(--accent-soft); }
+.box {
+  flex: none; width: 26px; height: 26px; border-radius: 8px; border: 2px solid var(--border);
+  display: grid; place-items: center; font-weight: 800; color: var(--accent-text);
+}
+.shop-row.done .box { background: var(--accent); border-color: var(--accent); }
+.shop-main { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.shop-label { font-weight: 600; font-size: 1.05rem; }
+.shop-qty { color: var(--accent); font-weight: 600; }
+.shop-qty.big { font-size: 1.4rem; }
+.shop-row.done .shop-label, .shop-row.done .shop-qty { text-decoration: line-through; color: var(--muted); font-weight: 500; }
+.shop-more { color: var(--muted); }
+.toggle-row { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+.toggle-row input { width: 22px; height: 22px; min-height: 0; margin: 2px 0 0; accent-color: var(--accent); flex: none; }

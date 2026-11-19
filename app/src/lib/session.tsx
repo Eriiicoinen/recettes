@@ -26,17 +26,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setMe(null)
       return
     }
-    const { data: m } = await supabase
+    const cacheKey = `recettes.household.${uid}`
+    const { data: m, error } = await supabase
       .from('household_members')
       .select('household_id, user_id, display_name, households(id, name, invite_code)')
       .eq('user_id', uid)
       .order('joined_at')
       .limit(1)
       .maybeSingle()
+    if (error) {
+      // Hors ligne (au magasin) : on reprend le foyer mémorisé plutôt que d'afficher l'écran d'accueil
+      try {
+        const cached = JSON.parse(localStorage.getItem(cacheKey) ?? 'null') as { me: Member; household: Household } | null
+        if (cached) { setMe(cached.me); setHousehold(cached.household) }
+      } catch { /* pas de cache */ }
+      return
+    }
     if (m) {
       const { households, ...member } = m as unknown as Member & { households: Household }
       setMe(member)
       setHousehold(households)
+      try { localStorage.setItem(cacheKey, JSON.stringify({ me: member, household: households })) } catch { /* stockage plein ou bloqué */ }
     } else {
       setMe(null)
       setHousehold(null)

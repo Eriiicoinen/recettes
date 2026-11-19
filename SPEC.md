@@ -1,6 +1,8 @@
 # Recettes & Menus: product spec (epics & capabilities)
 
-> Status: draft for review, 2026-11-19. No development has started.
+> Status (2026-11-19): **MVP built (M0–M5)** and live at https://eriiicoinen.github.io/recettes/.
+> Done: account & household, recipe book + search, import from link/text (Claude), Claude connector (MCP: add/search/get recipe,
+> week, shopping list), weekly menu + ideas, shopping list with live sync and offline mode. Next: P1 items (M6).
 > Replaces: `menus.gs` (Google Sheets + Apps Script), which works but is not user-friendly on a phone.
 
 ## 1. Goal
