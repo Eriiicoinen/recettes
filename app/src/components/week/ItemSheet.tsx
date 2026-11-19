@@ -1,12 +1,14 @@
 import { Utensils } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { yieldLabel, type Recipe } from '../../lib/recipes'
+import type { Member } from '../../lib/supabase'
 import { dayLabel, defaultServings, type WeekItem } from '../../lib/week'
 import Sheet from '../Sheet'
 
 /** Actions sur un repas de la semaine : quantité, invités, restes, déplacer, retirer. */
-export default function ItemSheet({ item, name, recipe, people, hasLeftovers, onClose, onServings, onMove, onToBasket, onLeftovers, onRemove }: {
-  item: WeekItem; name: string; recipe: Recipe | null; people: number; hasLeftovers: boolean; onClose: () => void
+export default function ItemSheet({ item, name, recipe, people, hasLeftovers, members, onCook, onClose, onServings, onMove, onToBasket, onLeftovers, onRemove }: {
+  item: WeekItem; name: string; recipe: Recipe | null; people: number; hasLeftovers: boolean
+  members: Member[]; onCook: (userId: string | null) => void; onClose: () => void
   onServings: (n: number) => void; onMove: () => void; onToBasket: () => void; onLeftovers: () => void; onRemove: () => void
 }) {
   const servings = item.servings ?? (recipe ? defaultServings(recipe, people) : 1)
@@ -23,6 +25,15 @@ export default function ItemSheet({ item, name, recipe, people, hasLeftovers, on
               <span>{yieldLabel(servings, recipe.yield_unit)}</span>
               <button onClick={() => onServings(servings + 1)} aria-label="Plus">+</button>
             </div>
+          </div>
+        )}
+        {item.day && members.length > 1 && (
+          <div className="row wrap" style={{ gap: 6 }}>
+            <span className="muted small">Qui cuisine ?</span>
+            {members.map((m) => (
+              <button key={m.user_id} className={item.cook_id === m.user_id ? 'chip on' : 'chip'} aria-pressed={item.cook_id === m.user_id}
+                onClick={() => onCook(item.cook_id === m.user_id ? null : m.user_id)}>{m.display_name}</button>
+            ))}
           </div>
         )}
         {forPeople && (

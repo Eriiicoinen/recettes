@@ -9,6 +9,7 @@ import RecipePicker from '../components/week/RecipePicker'
 import { listRecipes, listStats, type Recipe, type RecipeStats } from '../lib/recipes'
 import { useRealtime } from '../lib/realtime'
 import { useSession } from '../lib/session'
+import { supabase, type Member } from '../lib/supabase'
 import {
   addDays, addToWeek, applyProposals, copyWeek, dayLabel, defaultServings, fromISO, lastCookedMap, listWeek, makeLeftovers,
   MEALS, mondayOf, relativeWeek, removeLeftovers, removeWeekItem, todayISO, updateWeekItem, weekDays, weekLabel, type Meal,
@@ -33,6 +34,7 @@ export default function Week() {
   const [items, setItems] = useState<WeekItem[] | null>(null)
   const [recipes, setRecipes] = useState<Map<string, Recipe>>(new Map())
   const [stats, setStats] = useState<Map<string, RecipeStats>>(new Map())
+  const [members, setMembers] = useState<Member[]>([])
   const [picker, setPicker] = useState<Target | null>(null)
   const [selected, setSelected] = useState<WeekItem | null>(null)
   const [moving, setMoving] = useState<WeekItem | null>(null)
@@ -47,11 +49,14 @@ export default function Week() {
     if (!household) return
     const id = ++reqId.current
     try {
-      const [w, r, s] = await Promise.all([listWeek(household.id, start), listRecipes(household.id, ''), listStats()])
+      const [w, r, s, m] = await Promise.all([listWeek(household.id, start), listRecipes(household.id, ''), listStats(),
+        supabase.from('household_members').select('household_id, user_id, display_name').eq('household_id', household.id).order('joined_at')
+          .then(({ data }) => (data ?? []) as Member[])])
       if (id !== reqId.current) return // semaine changée ou rechargement plus récent entre-temps
       setItems(w)
       setRecipes(new Map(r.map((x) => [x.id, x])))
       setStats(s)
+      setMembers(m)
     } catch (e) {
       if (id === reqId.current) setError((e as Error).message)
     }
@@ -147,6 +152,7 @@ export default function Week() {
       <button key={i.id} className={`wchip${moving?.id === i.id ? ' moving' : ''}${r ? '' : ' free'}`} disabled={!!moving && moving.id !== i.id}
         {...pressHandlers(i)}>
         <span className="wchip-text">{itemName(i)}</span>
+        {i.cook_id && members.length > 1 && <span className="cook-badge" title="Qui cuisine">{members.find((x) => x.user_id === i.cook_id)?.display_name.charAt(0).toUpperCase()}</span>}
       </button>
     )
   }
@@ -275,6 +281,8 @@ export default function Week() {
           recipe={selected.recipe_id ? recipes.get(selected.recipe_id) ?? null : null}
           people={household?.people ?? 2}
           hasLeftovers={(items ?? []).some((i) => i.leftover_of === selected.id)}
+          members={members}
+          onCook={(uid) => act(() => updateWeekItem(selected.id, { cook_id: uid })).then(() => setSelected({ ...selected, cook_id: uid }))}
           onClose={() => setSelected(null)}
           onServings={(n) => act(() => updateWeekItem(selected.id, { servings: n })).then(() => setSelected({ ...selected, servings: n }))}
           onMove={() => { setMoving(selected); setSelected(null) }}

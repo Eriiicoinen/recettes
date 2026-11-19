@@ -8,6 +8,7 @@ import { listRecipes, yieldLabel, type Recipe } from '../lib/recipes'
 import { useRealtime } from '../lib/realtime'
 import { useSession } from '../lib/session'
 import { listItems } from '../lib/shopping'
+import { supabase, type Member } from '../lib/supabase'
 import {
   addDays, addToWeek, defaultServings, listDays, listWeek, mondayOf, removeWeekItem, todayISO, updateWeekItem, type Meal, type WeekItem,
 } from '../lib/week'
@@ -26,6 +27,7 @@ export default function Today() {
   const [recipes, setRecipes] = useState<Map<string, Recipe>>(new Map())
   const [summary, setSummary] = useState<Summary | null>(null)
   const [basket, setBasket] = useState<WeekItem[]>([])
+  const [members, setMembers] = useState<Member[]>([])
   const [picking, setPicking] = useState<{ day: string; meal: Meal } | null>(null)
   const [error, setError] = useState('')
 
@@ -38,6 +40,8 @@ export default function Today() {
         listItems(household.id, week).catch(() => []),
         listWeek(household.id, week).catch(() => []),
       ])
+      void supabase.from('household_members').select('household_id, user_id, display_name').eq('household_id', household.id)
+        .then(({ data }) => setMembers((data ?? []) as Member[]))
       setItems(days)
       setBasket(w.filter((i) => !i.day))
       setRecipes(new Map(r.map((x) => [x.id, x])))
@@ -117,6 +121,9 @@ export default function Today() {
                   ) : null}
                   <div className="meal-body">
                     <div className="meal-name">{name(i)}</div>
+                    {i.cook_id && members.length > 1 && (
+                      <div className="small cook-line">{i.cook_id === me?.user_id ? "C'est toi qui cuisines" : `${members.find((m) => m.user_id === i.cook_id)?.display_name ?? '…'} cuisine`}</div>
+                    )}
                     {r && parts && <div className="muted small">Pour {yieldLabel(parts, r.yield_unit)}{(r.prep_minutes ?? 0) + (r.cook_minutes ?? 0) ? ` · ${(r.prep_minutes ?? 0) + (r.cook_minutes ?? 0)} min` : ''}</div>}
                     <div className="row wrap" style={{ gap: 8, marginTop: 8 }}>
                       {r && !(r.is_simple && r.steps.length === 0) && (

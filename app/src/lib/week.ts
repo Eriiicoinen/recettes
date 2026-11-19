@@ -16,6 +16,8 @@ export type WeekItem = {
   position: number
   leftover_of: string | null
   reviewed_at: string | null
+  /** Qui cuisine (membre du foyer) */
+  cook_id: string | null
   created_at: string
 }
 
@@ -89,7 +91,7 @@ export async function addToWeek(householdId: string, start: string, item: {
   return data as WeekItem
 }
 
-export async function updateWeekItem(id: string, patch: Partial<Pick<WeekItem, 'day' | 'meal' | 'servings' | 'reviewed_at'>>) {
+export async function updateWeekItem(id: string, patch: Partial<Pick<WeekItem, 'day' | 'meal' | 'servings' | 'reviewed_at' | 'cook_id'>>) {
   const { error } = await supabase.from('week_items').update(patch).eq('id', id)
   if (error) throw error
 }

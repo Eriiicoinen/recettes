@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { guessAisle } from '../lib/aisleGuess'
 import ImportProgress, { type ImportKind } from '../components/ImportProgress'
-import { findBySource, importPhotos, importRecipe, splitInput } from '../lib/importRecipe'
+import { adaptRecipe, findBySource, importPhotos, importRecipe, splitInput } from '../lib/importRecipe'
 import { parseIngredientLine } from '../lib/parseLine'
 import {
   CATEGORIES, emptyDraft, formatDuration, getRecipe, listAisles, listIngredients, ingKey, parseQty, saveRecipe, SEASONS, UNITS, yieldLabel,
@@ -64,15 +64,17 @@ export default function RecipeEdit() {
     void listAisles(household.id).then(setAisles)
   }, [household])
 
-  async function runImport(input: string | File[] = importInput) {
-    if (!household || (typeof input === 'string' ? !input.trim() : !input.length)) return
-    setImportKind(typeof input === 'string' ? (splitInput(input).url ? 'url' : 'text') : 'photo')
+  async function runImport(input: string | File[] | { adapt: string; request: string } = importInput) {
+    if (!household) return
+    if (typeof input === 'string' ? !input.trim() : Array.isArray(input) ? !input.length : !input.request) return
+    setImportKind(typeof input === 'string' ? (splitInput(input).url ? 'url' : 'text') : Array.isArray(input) ? 'photo' : 'adapt')
     setImporting(true)
     setImportError('')
     setDuplicate(null)
     try {
       const a = aisles.length ? aisles : await listAisles(household.id)
-      const { draft: d, lines } = typeof input === 'string' ? await importRecipe(input, a) : await importPhotos(input, a)
+      const { draft: d, lines } = typeof input === 'string' ? await importRecipe(input, a)
+        : Array.isArray(input) ? await importPhotos(input, a) : await adaptRecipe(input.adapt, input.request, a)
       setDraft(d)
       setRows([...lines.map(toRow), blankRow()])
       setStepsText(d.steps.join('\n'))
@@ -91,10 +93,13 @@ export default function RecipeEdit() {
   // Arrivée depuis le bouton Partager du téléphone : import automatique
   useEffect(() => {
     const shared = searchParams.get('import')
-    if (!shared || !household || autoImportDone.current) return
+    const adaptId = searchParams.get('adapt')
+    const request = searchParams.get('demande')
+    if ((!shared && !(adaptId && request)) || !household || autoImportDone.current) return
     autoImportDone.current = true
     setSearchParams({}, { replace: true })
-    void runImport(shared)
+    // « Adapter avec Claude » depuis une fiche : variante enregistrée comme nouvelle recette
+    void runImport(adaptId && request ? { adapt: adaptId, request } : shared!)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [household])
 
@@ -243,7 +248,7 @@ export default function RecipeEdit() {
 
       {!id && !imported && (
         <div className="card stack import-card">
-          <h2 className="inline-icon"><Sparkles size={20} /> Importer</h2>
+          <h2 className="inline-icon"><Sparkles size={20} /> {importing && importKind === 'adapt' ? 'Adaptation par Claude' : 'Importer'}</h2>
           <textarea rows={3} value={importInput} onChange={(e) => setImportInput(e.target.value)} disabled={importing}
             placeholder="Colle le lien d'une recette (Marmiton, 750g, un blog…) ou le texte complet d'une recette" />
           {importing ? <ImportProgress kind={importKind} /> : (

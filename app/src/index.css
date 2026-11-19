@@ -530,3 +530,10 @@ h2.inline-icon, .inline-icon { display: inline-flex; align-items: center; gap: 8
 .sheet { animation: sheet-in .22s cubic-bezier(.2, .8, .2, 1); }
 @keyframes sheet-in { from { transform: translateY(24px); opacity: .6; } }
 @media (prefers-reduced-motion: reduce) { .content > .page, .center-page, .sheet { animation: none; } }
+.wchip { position: relative; }
+.cook-badge {
+  position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; border-radius: 999px; display: grid; place-items: center;
+  background: var(--herb); color: #fff; font-size: .65rem; font-weight: 700;
+}
+.wchip:has(.cook-badge) .wchip-text { padding-right: 16px; }
+.cook-line { color: var(--herb); font-weight: 600; }

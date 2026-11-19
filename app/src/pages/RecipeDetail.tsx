@@ -1,4 +1,5 @@
-import { AlarmClock, ArrowLeft, CalendarPlus, Camera, ChefHat, Heart, Pencil, Share2, Timer, X } from 'lucide-react'
+import { AlarmClock, ArrowLeft, CalendarPlus, Camera, ChefHat, Heart, Pencil, Share2, Sparkles, Timer, X } from 'lucide-react'
+import AdaptSheet from '../components/AdaptSheet'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
@@ -39,6 +40,7 @@ export default function RecipeDetail() {
   const [planned, setPlanned] = useState('')
   const { timers, now, start: startTimer, stop: stopTimer } = useTimers()
   const [flash, setFlash] = useState('')
+  const [adapting, setAdapting] = useState(false)
   const [photoBusy, setPhotoBusy] = useState(false)
 
   function notify(msg: string) {
@@ -180,6 +182,7 @@ export default function RecipeDetail() {
       {!cooking && (
         <div className="row wrap" style={{ gap: 6 }}>
           <button className="btn small-btn" onClick={share}><Share2 size={16} /> Partager</button>
+          <button className="btn small-btn" onClick={() => setAdapting(true)}><Sparkles size={16} /> Adapter</button>
           <label className={photoBusy ? 'btn small-btn disabled' : 'btn small-btn'}>
             <Camera size={16} /> {photoBusy ? 'Envoi…' : recipe.photo_url ? 'Changer la photo' : 'Ajouter une photo'}
             <input type="file" accept="image/*" hidden disabled={photoBusy}
@@ -261,6 +264,11 @@ export default function RecipeDetail() {
 
       {recipe.source_url && (
         <a className="muted small" href={recipe.source_url} target="_blank" rel="noreferrer">Source : {hostname(recipe.source_url)} ↗</a>
+      )}
+
+      {adapting && (
+        <AdaptSheet onClose={() => setAdapting(false)}
+          onAdapt={(request) => navigate(`/recettes/nouvelle?adapt=${recipe.id}&demande=${encodeURIComponent(request)}`)} />
       )}
 
       {timers.length > 0 && (

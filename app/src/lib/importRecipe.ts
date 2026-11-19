@@ -46,7 +46,12 @@ export async function importRecipe(input: string, aisles: Aisle[]) {
   return callImport(body, aisles, body.url ? 'url' : 'text')
 }
 
-async function callImport(body: object, aisles: Aisle[], kind: 'url' | 'text' | 'photo'): Promise<{ draft: RecipeDraft; lines: RecipeLine[] }> {
+/** Variante d'une recette du carnet (végétarien, sans lactose…) réécrite par Claude ; rien n'est enregistré. */
+export async function adaptRecipe(recipeId: string, request: string, aisles: Aisle[]) {
+  return callImport({ adapt: { recipe_id: recipeId, request } }, aisles, 'claude')
+}
+
+async function callImport(body: object, aisles: Aisle[], kind: 'url' | 'text' | 'photo' | 'claude'): Promise<{ draft: RecipeDraft; lines: RecipeLine[] }> {
   const { data, error } = await supabase.functions.invoke('import-recipe', { body })
   if (error) {
     if (error instanceof FunctionsHttpError) {

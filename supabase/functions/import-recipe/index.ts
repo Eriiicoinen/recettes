@@ -1,5 +1,7 @@
 // Importe une recette depuis une URL, un texte collé ou des photos, et la renvoie structurée (sans l'enregistrer).
-// POST { url?: string, text?: string, images?: { media_type, data (base64) }[] }  →  { recipe: ImportedRecipe, source_url: string | null }
+// POST { url?: string, text?: string, images?: { media_type, data (base64) }[], adapt?: { recipe_id, request } }
+//   →  { recipe: ImportedRecipe, source_url: string | null }
+// adapt : réécrit une recette du carnet selon une demande (végétarien, sans lactose…) ; rien n'est enregistré.
 import Anthropic from 'npm:@anthropic-ai/sdk@1.10.0'
 import { zodOutputFormat } from 'npm:@anthropic-ai/sdk@1.10.0/helpers/zod'
 import { createClient } from 'npm:@supabase/supabase-js@2.119.2'
@@ -49,11 +51,12 @@ const SYSTEM = `Tu transformes une recette (données structurées d'une page web
 
 Règles :
 - Tout en français. Traduis si la source est dans une autre langue, et convertis les unités impériales (cups, oz, lb, °F) en unités métriques.
-- Reprends fidèlement les quantités et les étapes de la source ; n'invente pas d'ingrédient. Tu peux reformuler une étape pour la rendre claire et concise.
+- Reprends fidèlement les quantités et les étapes de la source ; n'invente pas d'ingrédient (sauf pour une adaptation demandée). Tu peux reformuler une étape pour la rendre claire et concise.
 - Noms d'ingrédients : au singulier, majuscule initiale, réutilise exactement un nom de la liste « ingrédients déjà connus » quand c'est le même produit.
 - Rayon : choisis le rayon de magasin le plus probable dans la liste fournie.
 - Rendement : distingue bien un nombre de personnes d'un nombre de pièces. « Pour 20 cookies », « 12 muffins », « 1 cake », « 6 pots » → servings = ce nombre et yield_unit = « cookies », « muffins », « cake », « pots ». Les données schema.org (recipeYield) indiquent souvent seulement un nombre : vérifie dans le titre, les étapes ou le texte si ce nombre désigne des pièces. yield_unit = null uniquement pour des personnes ou des parts.
 - Photo : lis tout le texte visible, y compris l'écriture manuscrite ; si plusieurs photos, ce sont les pages successives d'une même recette. Ce qui est illisible est omis plutôt qu'inventé.
+- Adaptation demandée : applique la demande à la recette d'origine (remplace les ingrédients concernés, ajuste quantités, temps et étapes) en gardant son esprit. Ajoute la précision au nom entre parenthèses, ex. « Hachis parmentier (végétarien) ». Dans notes, explique en une ou deux phrases ce qui a changé. Si la demande est impossible ou dangereuse, mets is_recipe à false.
 - Si le contenu ne contient pas de recette (page d'erreur, article, accueil), mets is_recipe à false et remplis le reste au mieux avec des valeurs vides.`
 
 const BROWSER_HEADERS = {
@@ -148,7 +151,7 @@ Deno.serve(async (req) => {
   const { data: { user } } = await supabase.auth.getUser(authHeader.replace(/^Bearer\s+/i, ''))
   if (!user) return json({ error: 'Non connecté' }, 401)
 
-  let body: { url?: string; text?: string; images?: { media_type?: string; data?: string }[] }
+  let body: { url?: string; text?: string; images?: { media_type?: string; data?: string }[]; adapt?: { recipe_id?: string; request?: string } }
   try { body = await req.json() } catch { return json({ error: 'Requête invalide' }, 400) }
   const url = body.url?.trim() || null
   const pasted = body.text?.trim() || null
@@ -159,7 +162,9 @@ Deno.serve(async (req) => {
       return json({ error: 'Photo illisible ou trop lourde.' }, 400)
     }
   }
-  if (!url && !pasted && !images.length) return json({ error: 'Donne un lien, un texte ou une photo.' }, 400)
+  const adapt = body.adapt?.recipe_id && body.adapt.request?.trim()
+    ? { recipeId: String(body.adapt.recipe_id), request: body.adapt.request.trim().slice(0, 500) } : null
+  if (!url && !pasted && !images.length && !adapt) return json({ error: 'Donne un lien, un texte ou une photo.' }, 400)
 
   // Contexte du foyer : rayons et ingrédients connus, pour des noms et rayons cohérents
   const { data: member } = await supabase.from('household_members').select('household_id').eq('user_id', user.id).limit(1).maybeSingle()
@@ -195,6 +200,24 @@ Deno.serve(async (req) => {
         sourceUrl = parsed.href
         content = `Recette lue sur ${sourceUrl} :\n${viaClaude}`
       }
+    } else if (adapt) {
+      // Recette lue avec les droits de l'utilisateur : seulement une recette de son foyer
+      const { data: r } = await supabase.from('recipes')
+        .select('name, category, seasons, servings, yield_unit, prep_minutes, cook_minutes, steps, notes, tags, recipe_ingredients(quantity, unit, note, position, ingredients(name))')
+        .eq('id', adapt.recipeId).maybeSingle()
+      if (!r) return json({ error: 'Recette introuvable.' }, 404)
+      type Line = { quantity: number | null; unit: string | null; note: string | null; position: number; ingredients: { name: string } }
+      const lines = ((r.recipe_ingredients ?? []) as unknown as Line[]).sort((a, b) => a.position - b.position)
+        .map((l) => `- ${[l.quantity, l.unit].filter((x) => x != null && x !== '').join(' ')} ${l.ingredients.name}${l.note ? `, ${l.note}` : ''}`.replace(/^- +/, '- '))
+      content = `Recette d'origine à adapter :
+${r.name} (${r.category}) — pour ${r.servings} ${r.yield_unit ?? 'personnes'} — préparation ${r.prep_minutes ?? '?'} min, cuisson ${r.cook_minutes ?? '?'} min
+Ingrédients :
+${lines.join('\n')}
+Étapes :
+${(r.steps as string[]).map((st, i) => `${i + 1}. ${st}`).join('\n')}
+${r.notes ? `Notes : ${r.notes}` : ''}
+
+Demande d'adaptation : ${adapt.request}`
     } else if (images.length) {
       content = `Recette en photo (${images.length} image${images.length > 1 ? 's' : ''}) ci-dessus.${pasted ? `\nPrécision de l'utilisateur : ${pasted.slice(0, 2000)}` : ''}`
     } else {
@@ -223,7 +246,7 @@ Deno.serve(async (req) => {
     if (response.stop_reason === 'max_tokens') return json({ error: 'Recette trop longue à traiter.' }, 422)
     const recipe = response.parsed_output
     if (!recipe) return json({ error: 'Réponse illisible, réessaie.' }, 502)
-    if (!recipe.is_recipe) return json({ error: images.length ? 'Aucune recette lisible sur cette photo.' : 'Aucune recette trouvée sur cette page.' }, 422)
+    if (!recipe.is_recipe) return json({ error: adapt ? "Claude n'a pas pu faire cette adaptation : essaie une autre demande." : images.length ? 'Aucune recette lisible sur cette photo.' : 'Aucune recette trouvée sur cette page.' }, 422)
     return json({ recipe, source_url: sourceUrl })
   } catch (e) {
     if (e instanceof Anthropic.AuthenticationError) return json({ error: 'Clé API Claude invalide ou absente (secret ANTHROPIC_API_KEY).' }, 500)

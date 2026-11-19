@@ -1,10 +1,11 @@
 import { Check, LoaderCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-export type ImportKind = 'url' | 'text' | 'photo'
+export type ImportKind = 'url' | 'text' | 'photo' | 'adapt'
 
 // Étapes indicatives (l'import est un seul appel au serveur) : elles avancent avec le temps écoulé
 const STAGES: Record<ImportKind, [number, string][]> = {
+  adapt: [[0, 'Lecture de la recette'], [4, 'Adaptation des ingrédients'], [10, 'Réécriture des étapes'], [18, 'Rangement par rayon']],
   url: [[0, 'Lecture de la page'], [4, 'Repérage des ingrédients'], [10, 'Rédaction des étapes'], [18, 'Rangement par rayon']],
   text: [[0, 'Lecture du texte'], [3, 'Repérage des ingrédients'], [8, 'Rédaction des étapes'], [15, 'Rangement par rayon']],
   photo: [[0, 'Lecture de la photo'], [5, 'Déchiffrage du texte'], [11, 'Repérage des ingrédients'], [18, 'Rédaction des étapes']],
