@@ -426,3 +426,45 @@ h2.inline-icon, .inline-icon { display: inline-flex; align-items: center; gap: 8
 .stat-value { font-family: var(--font-display); font-size: 1.8rem; font-weight: 600; line-height: 1.1; }
 .meter { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-top: 6px; }
 .meter span { display: block; height: 100%; background: var(--herb); border-radius: inherit; }
+
+/* ---------- Semaine : grille compacte ---------- */
+.week-summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 12px 12px 16px; }
+.week-summary > div:first-child { flex: 1; min-width: 0; }
+.week-summary .stat-value { font-size: 1.5rem; }
+.wgrid { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.wrow { display: grid; grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1fr); gap: 6px; padding: 6px 8px; border-top: 1px solid var(--border); align-items: stretch; }
+.wrow.whead { border-top: 0; padding-top: 10px; padding-bottom: 4px; font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.wrow.today { background: var(--accent-soft); }
+.wday { display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; }
+.wday-name { font-size: .75rem; color: var(--muted); font-weight: 600; }
+.wday-num { font-family: var(--font-display); font-size: 1.25rem; font-weight: 600; }
+.wrow.today .wday-name, .wrow.today .wday-num { color: var(--accent); }
+.wcell { display: flex; flex-direction: column; gap: 4px; min-height: 52px; justify-content: center; }
+.wchip {
+  width: 100%; min-height: 44px; padding: 6px 10px; border-radius: 10px; border: 0; text-align: left; cursor: pointer;
+  background: var(--surface-2); font-size: .88rem; font-weight: 600; line-height: 1.2; display: block;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation;
+}
+.wchip.free { background: transparent; border: 1.5px solid var(--border); color: var(--muted); font-weight: 500; }
+.wchip.moving { outline: 2px solid var(--accent); background: var(--accent-soft); }
+.wchip:disabled { opacity: .45; }
+.wadd {
+  width: 100%; min-height: 44px; border-radius: 10px; border: 1.5px dashed var(--border); background: transparent;
+  color: var(--muted); display: grid; place-items: center; cursor: pointer;
+}
+.wadd.drop { border-color: var(--accent); color: var(--accent); font-weight: 700; background: var(--accent-soft); }
+.past-days > summary { list-style: none; cursor: pointer; padding: 8px 12px; border-top: 1px solid var(--border); }
+.past-days > summary::-webkit-details-marker { display: none; }
+.past-days > summary::before { content: '▸ '; }
+.past-days[open] > summary::before { content: '▾ '; }
+.past-days .wrow { opacity: .6; }
+.unplaced .basket { display: flex; flex-wrap: wrap; gap: 6px; }
+.unplaced .wchip { width: auto; max-width: 100%; }
+.plan-option {
+  display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px; text-align: left; cursor: pointer;
+  border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: inherit;
+}
+.plan-option > span { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.plan-option > svg:first-child { color: var(--accent); }
+.plan-option.primary { background: var(--accent-soft); border-color: transparent; }
+.wchip-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }

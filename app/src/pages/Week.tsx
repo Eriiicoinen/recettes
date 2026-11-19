@@ -1,20 +1,28 @@
-import { ChevronLeft, ChevronRight, Copy, Lightbulb, Sparkles } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { ChevronLeft, ChevronRight, Plus, Sparkles } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import CopyWeekSheet from '../components/week/CopyWeekSheet'
 import FillSheet from '../components/week/FillSheet'
 import ItemSheet from '../components/week/ItemSheet'
+import PlanSheet from '../components/week/PlanSheet'
 import RecipePicker from '../components/week/RecipePicker'
-import { currentSeason, listRecipes, listStats, yieldLabel, type Recipe, type RecipeStats } from '../lib/recipes'
-import { useSession } from '../lib/session'
+import { listRecipes, listStats, type Recipe, type RecipeStats } from '../lib/recipes'
 import { useRealtime } from '../lib/realtime'
+import { useSession } from '../lib/session'
 import {
-  addDays, addToWeek, applyProposals, copyWeek, dayLabel, defaultServings, lastCookedMap, listWeek, makeLeftovers, MEALS, mondayOf,
-  pickIdeas, relativeWeek, removeLeftovers, removeWeekItem, todayISO, updateWeekItem, weekDays, weekLabel, type Meal,
+  addDays, addToWeek, applyProposals, copyWeek, dayLabel, defaultServings, fromISO, lastCookedMap, listWeek, makeLeftovers,
+  MEALS, mondayOf, relativeWeek, removeLeftovers, removeWeekItem, todayISO, updateWeekItem, weekDays, weekLabel, type Meal,
   type WeekItem,
 } from '../lib/week'
 
 type Target = { day: string; meal: Meal } | 'basket'
+
+/** « Lun 17 » */
+function shortDay(iso: string) {
+  const d = fromISO(iso)
+  const w = d.toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '')
+  return { weekday: w.charAt(0).toUpperCase() + w.slice(1), num: d.getDate() }
+}
 
 export default function Week() {
   const { household } = useSession()
@@ -28,10 +36,10 @@ export default function Week() {
   const [picker, setPicker] = useState<Target | null>(null)
   const [selected, setSelected] = useState<WeekItem | null>(null)
   const [moving, setMoving] = useState<WeekItem | null>(null)
-  const [ideasSeed, setIdeasSeed] = useState(0)
+  const [planning, setPlanning] = useState(false)
   const [filling, setFilling] = useState(false)
   const [copying, setCopying] = useState(false)
-  const [copied, setCopied] = useState('')
+  const [flash, setFlash] = useState('')
   const [error, setError] = useState('')
 
   const reqId = useRef(0)
@@ -58,24 +66,21 @@ export default function Week() {
 
   const basket = useMemo(() => (items ?? []).filter((i) => !i.day), [items])
   const slot = (day: string, meal: Meal) => (items ?? []).filter((i) => i.day === day && i.meal === meal)
-
-  const ideas = useMemo(() => {
-    const exclude = new Set((items ?? []).map((i) => i.recipe_id).filter((x): x is string => !!x))
-    const last = lastCookedMap(stats)
-    return pickIdeas([...recipes.values()], last, exclude, currentSeason())
-    // ideasSeed relance le tirage
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recipes, stats, items?.length, ideasSeed])
+  const days = weekDays(start)
+  const pastDays = days.filter((d) => d < today)
+  const nextDays = days.filter((d) => d >= today)
+  const planned = new Set((items ?? []).filter((i) => i.day).map((i) => `${i.day}|${i.meal}`)).size
+  const editable = days[6] >= today
 
   const goWeek = (s: string) => setParams(s === mondayOf(today) ? {} : { s }, { replace: true })
 
   function itemName(i: WeekItem) {
     return i.recipe_id ? recipes.get(i.recipe_id)?.name ?? 'Recette supprimée' : i.free_text ?? ''
   }
-  function itemYield(i: WeekItem) {
-    const r = i.recipe_id ? recipes.get(i.recipe_id) : null
-    if (!r) return null
-    return yieldLabel(i.servings ?? r.servings, r.yield_unit)
+
+  function notify(msg: string) {
+    setFlash(msg)
+    setTimeout(() => setFlash(''), 4000)
   }
 
   async function act(fn: () => Promise<unknown>) {
@@ -113,13 +118,65 @@ export default function Week() {
     if (t !== 'basket') await act(() => updateWeekItem(item.id, t))
   }
 
-  const ItemChip = ({ i }: { i: WeekItem }) => (
-    <button className={`week-item${moving?.id === i.id ? ' moving' : ''}${i.recipe_id ? '' : ' free'}`}
-      onClick={() => (moving ? undefined : setSelected(i))} disabled={!!moving}>
-      <span className="week-item-name">{itemName(i)}</span>
-      {itemYield(i) && <span className="muted small">{itemYield(i)}</span>}
-    </button>
-  )
+  // Appui long sur un repas : mode déplacement (un appui simple ouvre ses actions)
+  const press = useRef<{ timer?: ReturnType<typeof setTimeout>; fired: boolean }>({ fired: false })
+  const pressHandlers = (i: WeekItem) => ({
+    onPointerDown: () => {
+      press.current.fired = false
+      clearTimeout(press.current.timer)
+      press.current.timer = setTimeout(() => {
+        press.current.fired = true
+        navigator.vibrate?.(15)
+        setMoving(i)
+      }, 450)
+    },
+    onPointerUp: () => clearTimeout(press.current.timer),
+    onPointerLeave: () => clearTimeout(press.current.timer),
+    onPointerCancel: () => clearTimeout(press.current.timer),
+    onContextMenu: (e: MouseEvent) => e.preventDefault(),
+    onClick: () => {
+      if (press.current.fired) { press.current.fired = false; return }
+      if (!moving) setSelected(i)
+    },
+  })
+
+  // Fonction de rendu (pas un composant) : sinon chaque rendu démonte et recrée les puces
+  const chip = (i: WeekItem) => {
+    const r = i.recipe_id ? recipes.get(i.recipe_id) : undefined
+    return (
+      <button key={i.id} className={`wchip${moving?.id === i.id ? ' moving' : ''}${r ? '' : ' free'}`} disabled={!!moving && moving.id !== i.id}
+        {...pressHandlers(i)}>
+        <span className="wchip-text">{itemName(i)}</span>
+      </button>
+    )
+  }
+
+  const cell = (day: string, meal: Meal) => {
+    const list = slot(day, meal)
+    const label = `${meal === 'midi' ? 'Midi' : 'Soir'} du ${dayLabel(day)}`
+    return (
+      <div className="wcell" key={meal}>
+        {list.map(chip)}
+        {moving ? (
+          !(moving.day === day && moving.meal === meal) && (
+            <button className="wadd drop" onClick={() => dropTo({ day, meal })} aria-label={`Mettre au ${label}`}>Ici</button>
+          )
+        ) : list.length === 0 && (
+          <button className="wadd" onClick={() => setPicker({ day, meal })} aria-label={`Ajouter au ${label}`}><Plus size={18} /></button>
+        )}
+      </div>
+    )
+  }
+
+  const row = (day: string) => {
+    const { weekday, num } = shortDay(day)
+    return (
+      <div key={day} className={`wrow${day === today ? ' today' : ''}`}>
+        <div className="wday"><span className="wday-name">{weekday}</span><span className="wday-num">{num}</span></div>
+        {MEALS.map((m) => cell(day, m.id))}
+      </div>
+    )
+  }
 
   return (
     <section className="page">
@@ -135,93 +192,69 @@ export default function Week() {
         <button className="btn ghost small-btn" style={{ alignSelf: 'center' }} onClick={() => goWeek(mondayOf(today))}>Revenir à cette semaine</button>
       )}
 
-      {moving && (
+      {moving ? (
         <div className="move-banner" role="status">
           <span>Où mettre <strong>{itemName(moving)}</strong> ?</span>
           <button className="btn small-btn" onClick={() => setMoving(null)}>Annuler</button>
         </div>
+      ) : items && editable && (
+        <div className="week-summary">
+          <div>
+            <div className="stat-value">{planned}<span className="muted small"> / 14 repas</span></div>
+            <div className="meter" aria-hidden><span style={{ width: `${Math.min(100, (planned / 14) * 100)}%` }} /></div>
+          </div>
+          <button className="btn primary" onClick={() => setPlanning(true)}><Sparkles size={18} /> Planifier</button>
+        </div>
       )}
 
       {error && <p className="error">{error}</p>}
+      {flash && <p className="muted small" role="status" style={{ margin: 0 }}>{flash}</p>}
+
       {items === null ? <p className="muted">Chargement…</p> : (
         <>
-          {!moving && addDays(start, 6) >= today && (
-            <div className="grid-2">
-              <button className="btn primary" onClick={() => setFilling(true)}><Sparkles size={18} /> Remplir ma semaine</button>
-              <button className="btn" onClick={() => setCopying(true)}><Copy size={18} /> Reprendre une semaine</button>
-            </div>
-          )}
-          {copied && <p className="muted small" role="status" style={{ margin: 0 }}>{copied}</p>}
-          <div className="card stack">
-            <div className="row between">
-              <h2>Recettes de la semaine</h2>
-              {moving ? (
-                moving.day && <button className="btn small-btn primary" onClick={() => dropTo('basket')}>Mettre ici</button>
-              ) : (
-                <button className="btn small-btn" onClick={() => setPicker('basket')}>+ Ajouter</button>
+          {(basket.length > 0 || (moving && moving.day)) && (
+            <div className="card stack unplaced">
+              <div className="row between">
+                <h2>À placer <span className="muted small">{basket.length || ''}</span></h2>
+                {moving?.day && <button className="btn small-btn primary" onClick={() => dropTo('basket')}>Mettre ici</button>}
+              </div>
+              <div className="basket">{basket.map(chip)}</div>
+              {!moving && basket.length > 0 && (
+                <p className="muted small" style={{ margin: 0 }}>Déjà comptées dans les courses. Touche-en une puis « Placer », ou laisse-les sans jour.</p>
               )}
             </div>
-            {basket.length === 0 ? (
-              <p className="muted small" style={{ margin: 0 }}>
-                Les recettes prévues sans jour précis. Elles comptent pour la liste de courses. Place-les dans un créneau si tu veux.
-              </p>
-            ) : (
-              <div className="basket">{basket.map((i) => <ItemChip key={i.id} i={i} />)}</div>
-            )}
-          </div>
-
-          <div className="days">
-            {weekDays(start).map((day) => (
-              <div key={day} className={day === today ? 'day card today' : day < today ? 'day card past' : 'day card'}>
-                <div className="day-title">{dayLabel(day)}{day === today && <span className="pill small">Aujourd'hui</span>}</div>
-                {MEALS.map((m) => {
-                  const list = slot(day, m.id)
-                  return (
-                    <div key={m.id} className="slot">
-                      <span className="slot-label muted small">{m.label}</span>
-                      <div className="slot-items">
-                        {list.map((i) => <ItemChip key={i.id} i={i} />)}
-                        {moving ? (
-                          !(moving.day === day && moving.meal === m.id) && (
-                            <button className="slot-add drop" onClick={() => dropTo({ day, meal: m.id })}>Mettre ici</button>
-                          )
-                        ) : (
-                          <button className="slot-add" onClick={() => setPicker({ day, meal: m.id })}
-                            aria-label={`Ajouter au ${m.label.toLowerCase()} du ${dayLabel(day)}`}>{list.length ? '+' : '+ Ajouter'}</button>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            ))}
-          </div>
-
-          {!moving && ideas.length > 0 && (
-            <div className="card stack">
-              <div className="row between">
-                <h2 className="inline-icon"><Lightbulb size={20} /> Idées</h2>
-                <button className="btn ghost small-btn" onClick={() => setIdeasSeed((n) => n + 1)}>Autres idées</button>
-              </div>
-              <p className="muted small" style={{ margin: 0 }}>De saison, pas cuisinées depuis un mois.</p>
-              <ul className="plain ideas">
-                {ideas.map((r) => (
-                  <li key={r.id} className="row between">
-                    <Link to={`/recettes/${r.id}`}>{r.name}</Link>
-                    <button className="btn small-btn" onClick={() => act(() => addToWeek(household!.id, start, { recipe_id: r.id, servings: defaultServings(r, household!.people) }))}>
-                      + Semaine
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
           )}
+
+          <div className="wgrid">
+            <div className="wrow whead"><span /><span>Midi</span><span>Soir</span></div>
+            {pastDays.length > 0 && pastDays.length < 7 && (
+              <details className="past-days">
+                <summary className="muted small">{pastDays.length} jour{pastDays.length > 1 ? 's' : ''} passé{pastDays.length > 1 ? 's' : ''}</summary>
+                {pastDays.map(row)}
+              </details>
+            )}
+            {(pastDays.length === 7 ? days : nextDays).map(row)}
+          </div>
+          {!moving && <p className="muted small" style={{ margin: 0, textAlign: 'center' }}>Appui long sur un repas pour le déplacer.</p>}
         </>
+      )}
+
+      {planning && household && items && (
+        <PlanSheet
+          recipes={[...recipes.values()]}
+          lastCooked={lastCookedMap(stats)}
+          exclude={new Set(items.map((i) => i.recipe_id).filter((x): x is string => !!x))}
+          onClose={() => setPlanning(false)}
+          onFill={() => { setPlanning(false); setFilling(true) }}
+          onCopy={() => { setPlanning(false); setCopying(true) }}
+          onAddUnplaced={() => { setPlanning(false); setPicker('basket') }}
+          onAddIdea={(r) => void act(() => addToWeek(household.id, start, { recipe_id: r.id, servings: defaultServings(r, household.people) }))}
+        />
       )}
 
       {picker && (
         <RecipePicker
-          title={picker === 'basket' ? 'Ajouter à la semaine' : `${dayLabel(picker.day)} · ${picker.meal === 'midi' ? 'Midi' : 'Soir'}`}
+          title={picker === 'basket' ? 'Ajouter sans jour' : `${dayLabel(picker.day)} · ${picker.meal === 'midi' ? 'Midi' : 'Soir'}`}
           householdId={household!.id}
           people={household!.people}
           basket={picker === 'basket' ? [] : basket}
@@ -265,8 +298,7 @@ export default function Week() {
             setCopying(false)
             void act(async () => {
               const n = await copyWeek(household.id, w, start, items, today)
-              setCopied(n ? `✓ ${n} repas repris de la semaine du ${weekLabel(w.start)}.` : 'Rien à reprendre : les créneaux sont déjà remplis ou passés.')
-              setTimeout(() => setCopied(''), 4000)
+              notify(n ? `✓ ${n} repas repris de la semaine du ${weekLabel(w.start)}.` : 'Rien à reprendre : les créneaux sont déjà remplis ou passés.')
             })
           }} />
       )}
