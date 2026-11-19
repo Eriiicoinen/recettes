@@ -2,7 +2,6 @@ import { Heart, Lightbulb, Plus, Search, X } from 'lucide-react'
 import { CategoryIcon, tintOf } from '../components/CategoryIcon'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import ReviewPrompt from '../components/ReviewPrompt'
 import {
   cacheAllRecipes, CATEGORIES, currentSeason, formatDuration, listRecipes, listStats, relativeDate,
   type Recipe, type RecipeStats,
@@ -96,7 +95,6 @@ export default function RecipeList() {
         <Link to="/recettes/nouvelle" className="btn primary"><Plus size={18} /> Ajouter</Link>
       </div>
 
-      {household && !query && <ReviewPrompt householdId={household.id} />}
       {!query && <Link to="/idees" className="btn soft"><Lightbulb size={18} /> Que faire avec ce que j'ai ?</Link>}
 
       <div className="search">

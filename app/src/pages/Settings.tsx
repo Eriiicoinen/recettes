@@ -1,4 +1,6 @@
+import { ArrowLeft } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useSession } from '../lib/session'
 import { supabase, type Member } from '../lib/supabase'
 import { useRealtime } from '../lib/realtime'
@@ -8,6 +10,7 @@ import ConnectorCard from './ConnectorCard'
 
 export default function Settings() {
   const { household, me, session, reloadHousehold } = useSession()
+  const navigate = useNavigate()
   const [peopleError, setPeopleError] = useState('')
 
   async function setPeople(n: number) {
@@ -41,7 +44,10 @@ export default function Settings() {
 
   return (
     <section className="page">
-      <h1>Réglages</h1>
+      <div className="row" style={{ gap: 4 }}>
+        <button className="btn ghost icon" onClick={() => navigate(-1)} aria-label="Retour"><ArrowLeft size={22} /></button>
+        <h1 style={{ margin: 0 }}>Réglages</h1>
+      </div>
 
       <div className="card stack">
         <h2>{household.name}</h2>

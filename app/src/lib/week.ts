@@ -353,3 +353,11 @@ export async function copyWeek(householdId: string, from: PastWeek, to: string, 
   }
   return rows.length
 }
+
+/** Repas placés sur des jours donnés (aujourd'hui, demain), toutes semaines confondues. */
+export async function listDays(householdId: string, days: string[]): Promise<WeekItem[]> {
+  const { data, error } = await supabase.from('week_items').select('*')
+    .eq('household_id', householdId).in('day', days).order('position').order('created_at')
+  if (error) throw error
+  return data as WeekItem[]
+}

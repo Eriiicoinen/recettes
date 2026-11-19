@@ -1,4 +1,4 @@
-import { BookOpen, CalendarDays, Settings as SettingsIcon, ShoppingCart } from 'lucide-react'
+import { BookOpen, CalendarDays, ShoppingCart, Sun } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { HashRouter, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom'
 import { SessionProvider, useSession } from './lib/session'
@@ -11,13 +11,14 @@ import RecipeEdit from './pages/RecipeEdit'
 import RecipeList from './pages/RecipeList'
 import Settings from './pages/Settings'
 import Shopping from './pages/Shopping'
+import Today from './pages/Today'
 import Week from './pages/Week'
 
 const TABS = [
-  { to: '/recettes', label: 'Recettes', icon: BookOpen },
+  { to: '/aujourdhui', label: "Aujourd'hui", icon: Sun },
   { to: '/semaine', label: 'Semaine', icon: CalendarDays },
+  { to: '/recettes', label: 'Recettes', icon: BookOpen },
   { to: '/courses', label: 'Courses', icon: ShoppingCart },
-  { to: '/reglages', label: 'Réglages', icon: SettingsIcon },
 ]
 
 /** Lien ou texte reçu via le menu Partager (?url=, ?text=) ou un Raccourci iPhone (?import=). */
@@ -58,6 +59,7 @@ function Shell() {
       <ShareHandler />
       <div className="content">
         <Routes>
+          <Route path="/aujourdhui" element={<Today />} />
           <Route path="/recettes" element={<RecipeList />} />
           <Route path="/recettes/nouvelle" element={<RecipeEdit />} />
           <Route path="/recettes/:id" element={<RecipeDetail />} />
@@ -66,7 +68,7 @@ function Shell() {
           <Route path="/semaine" element={<Week />} />
           <Route path="/courses" element={<Shopping />} />
           <Route path="/reglages" element={<Settings />} />
-          <Route path="*" element={<Navigate to="/recettes" replace />} />
+          <Route path="*" element={<Navigate to="/aujourdhui" replace />} />
         </Routes>
       </div>
       <nav className="tabbar">

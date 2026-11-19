@@ -1,7 +1,6 @@
 import { ChevronLeft, ChevronRight, Copy, Lightbulb, Sparkles } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import ReviewPrompt from '../components/ReviewPrompt'
 import CopyWeekSheet from '../components/week/CopyWeekSheet'
 import FillSheet from '../components/week/FillSheet'
 import ItemSheet from '../components/week/ItemSheet'
@@ -144,7 +143,6 @@ export default function Week() {
       )}
 
       {error && <p className="error">{error}</p>}
-      {household && start === mondayOf(today) && !moving && <ReviewPrompt householdId={household.id} />}
       {items === null ? <p className="muted">Chargement…</p> : (
         <>
           {!moving && addDays(start, 6) >= today && (

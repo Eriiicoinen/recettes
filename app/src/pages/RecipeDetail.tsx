@@ -1,6 +1,6 @@
 import { AlarmClock, ArrowLeft, CalendarPlus, Camera, ChefHat, Heart, Pencil, Share2, Timer, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   deleteRecipe, formatDuration, formatQty, getRecipe, listStats, recipeText, relativeDate, setFavorite, yieldLabel,
   type Recipe, type RecipeLine, type RecipeStats,
@@ -20,6 +20,9 @@ function hostname(url: string) {
 
 export default function RecipeDetail() {
   const { id } = useParams<{ id: string }>()
+  // Depuis « Aujourd'hui » : ?cuisine=1 ouvre le mode cuisine, ?parts=N affiche les quantités prévues au menu
+  const [params] = useSearchParams()
+  const plannedParts = Number(params.get('parts')) || null
   const navigate = useNavigate()
   const [recipe, setRecipe] = useState<Recipe | null>(null)
   const [lines, setLines] = useState<RecipeLine[]>([])
@@ -28,7 +31,7 @@ export default function RecipeDetail() {
   const [servings, setServings] = useState(4)
   const [doneIng, setDoneIng] = useState<Set<number>>(new Set())
   const [doneStep, setDoneStep] = useState<Set<number>>(new Set())
-  const [cooking, setCooking] = useState(false)
+  const [cooking, setCooking] = useState(() => params.get('cuisine') === '1')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const { household } = useSession()
   const [planOpen, setPlanOpen] = useState(false)
@@ -88,12 +91,13 @@ export default function RecipeDetail() {
     const r = await getRecipe(id)
     if (!r) { setMissing(true); return }
     setRecipe((prev) => {
-      if (!prev || prev.servings !== r.recipe.servings) setServings(r.recipe.servings)
+      if (!prev) setServings(plannedParts ?? r.recipe.servings)
+      else if (prev.servings !== r.recipe.servings) setServings(r.recipe.servings)
       return r.recipe
     })
     setLines(r.lines)
     setStats((await listStats()).get(id))
-  }, [id])
+  }, [id, plannedParts])
 
   useEffect(() => {
     void load()
