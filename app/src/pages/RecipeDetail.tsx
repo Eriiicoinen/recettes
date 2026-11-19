@@ -5,6 +5,9 @@ import {
   type Recipe, type RecipeLine, type RecipeStats,
 } from '../lib/recipes'
 import { supabase } from '../lib/supabase'
+import Sheet from '../components/Sheet'
+import { useSession } from '../lib/session'
+import { addDays, addToWeek, mondayOf, relativeWeek, todayISO, weekLabel, weeksContaining } from '../lib/week'
 
 type WakeLockSentinelLike = { release: () => Promise<void> }
 
@@ -24,6 +27,24 @@ export default function RecipeDetail() {
   const [doneStep, setDoneStep] = useState<Set<number>>(new Set())
   const [cooking, setCooking] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const { household } = useSession()
+  const [planOpen, setPlanOpen] = useState(false)
+  const [inWeeks, setInWeeks] = useState<Set<string>>(new Set())
+  const [planned, setPlanned] = useState('')
+
+  async function openPlan() {
+    if (!household || !recipe) return
+    const thisWeek = mondayOf(todayISO())
+    setInWeeks(await weeksContaining(household.id, recipe.id, [thisWeek, addDays(thisWeek, 7)]))
+    setPlanOpen(true)
+  }
+
+  async function plan(week: string) {
+    if (!household || !recipe) return
+    setPlanOpen(false)
+    await addToWeek(household.id, week, { recipe_id: recipe.id, servings })
+    setPlanned(`Ajoutée : ${relativeWeek(week).toLowerCase()}`)
+  }
 
   useEffect(() => {
     if (!id) return
@@ -103,9 +124,26 @@ export default function RecipeDetail() {
         {recipe.tags.length > 0 && <div className="row wrap small">{recipe.tags.map((t) => <span key={t} className="tag">#{t}</span>)}</div>}
       </header>
 
-      <button className={cooking ? 'btn' : 'btn primary'} onClick={() => setCooking(!cooking)}>
-        {cooking ? 'Quitter le mode cuisine' : '🍳 Mode cuisine'}
-      </button>
+      <div className="grid-2">
+        <button className="btn primary" onClick={openPlan}>📅 Ajouter à la semaine</button>
+        <button className="btn" onClick={() => setCooking(!cooking)}>
+          {cooking ? 'Quitter le mode cuisine' : '🍳 Mode cuisine'}
+        </button>
+      </div>
+      {planned && <p className="muted small" role="status" style={{ margin: 0 }}>✓ {planned}</p>}
+      {planOpen && (
+        <Sheet title="Ajouter à quelle semaine ?" onClose={() => setPlanOpen(false)}>
+          <div className="stack">
+            {[mondayOf(todayISO()), addDays(mondayOf(todayISO()), 7)].map((w) => (
+              <button key={w} className="pick-row" onClick={() => plan(w)}>
+                <span>{relativeWeek(w)} <span className="muted small">({weekLabel(w)})</span></span>
+                {inWeeks.has(w) && <span className="muted small">déjà prévue</span>}
+              </button>
+            ))}
+            <p className="muted small" style={{ margin: 0 }}>Elle rejoint « Recettes de la semaine » ; tu pourras la placer sur un jour dans l'onglet Semaine.</p>
+          </div>
+        </Sheet>
+      )}
 
       <div className="card stack">
         <div className="row between">
