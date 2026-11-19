@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, ChevronRight, Ellipsis, Repeat, Share2, TriangleAlert } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Ellipsis, House, Plus, Repeat, Share2, Trash2, TriangleAlert } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import Sheet from '../components/Sheet'
@@ -35,7 +35,14 @@ export default function Shopping() {
   const [newLabel, setNewLabel] = useState('')
   const [recurring, setRecurring] = useState<RecurringItem[]>([])
   const [showRecurring, setShowRecurring] = useState(false)
-  const [shared, setShared] = useState('')
+  // Message bref en bas d'écran, avec « Annuler » quand l'action peut être défaite
+  const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null)
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const showToast = (msg: string, undo?: () => void) => {
+    clearTimeout(toastTimer.current)
+    setToast({ msg, undo })
+    toastTimer.current = setTimeout(() => setToast(null), undo ? 5000 : 2500)
+  }
   const [error, setError] = useState('')
   const itemsRef = useRef<ShoppingItem[] | null>(null)
   itemsRef.current = items
@@ -138,12 +145,16 @@ export default function Shopping() {
     try { await fn() } catch (e) { setError((e as Error).message); void load(false) }
   }
 
-  function toggle(i: ShoppingItem) {
+  function toggle(i: ShoppingItem, withUndo = true) {
     const patch = i.checked
       ? { checked: false, checked_by: null, checked_at: null }
       : { checked: true, checked_by: me?.user_id ?? null, checked_at: new Date().toISOString() }
     patchLocal(i.id, patch)
     void safe(() => run({ kind: 'update', table: 'shopping_items', id: i.id, patch }))
+    if (!i.checked) {
+      navigator.vibrate?.(10)
+      if (withUndo) showToast(`${i.label} : dans le chariot`, () => toggle({ ...i, ...patch }, false))
+    }
   }
 
   function update(i: ShoppingItem, patch: Partial<ShoppingItem>) {
@@ -179,6 +190,23 @@ export default function Shopping() {
       return next
     })
     void safe(() => run({ kind: 'delete', table: 'shopping_items', id: i.id }))
+    showToast(`${i.label} supprimé`, () => {
+      // Annuler : la même ligne revient (même identifiant)
+      loadSeq.current++
+      setItems((list) => {
+        const next = [...(list ?? []), i]
+        persist({ items: next })
+        return next
+      })
+      const { id, household_id, week_start, origin, label, aisle_id, quantity, unit } = i
+      void safe(() => run({ kind: 'insert', table: 'shopping_items', row: { id, household_id, week_start, origin, label, aisle_id, quantity, unit } }))
+    })
+  }
+
+  function hide(i: ShoppingItem) {
+    setSelected(null)
+    update(i, { hidden: true })
+    showToast(`${i.label} : retiré de la liste`, () => update({ ...i, hidden: true }, { hidden: false }))
   }
 
   /** Article à racheter chaque semaine : retenu, et ajouté automatiquement aux prochaines listes */
@@ -200,12 +228,11 @@ export default function Shopping() {
     const text = listText(week, groups, staples, (i) => amounts(i).main)
     try {
       if (navigator.share) await navigator.share({ title: 'Liste de courses', text })
-      else { await navigator.clipboard.writeText(text); setShared('Liste copiée ✓') }
+      else { await navigator.clipboard.writeText(text); showToast('Liste copiée') }
     } catch (e) {
       if ((e as Error).name === 'AbortError') return
-      try { await navigator.clipboard.writeText(text); setShared('Liste copiée ✓') } catch { setShared('Partage impossible sur cet appareil.') }
+      try { await navigator.clipboard.writeText(text); showToast('Liste copiée') } catch { showToast('Partage impossible sur cet appareil.') }
     }
-    setTimeout(() => setShared(''), 2000)
   }
 
   function addManual(e: FormEvent) {
@@ -280,21 +307,22 @@ export default function Shopping() {
 
   return (
     <section className="page">
-      <div className="week-nav">
-        <button className="btn ghost icon" onClick={() => goWeek(addDays(week, -7))} aria-label="Semaine précédente"><ChevronLeft size={24} /></button>
-        <div className="week-title">
-          <h1>Courses</h1>
-          <div className="muted small">{relativeWeek(week)} · {weekLabel(week)}</div>
+      <div className="shop-head">
+        <div className="week-nav">
+          <button className="btn ghost icon" onClick={() => goWeek(addDays(week, -7))} aria-label="Semaine précédente"><ChevronLeft size={24} /></button>
+          <div className="week-title">
+            <h1>Courses</h1>
+            <div className="muted small">{relativeWeek(week)} · {weekLabel(week)}</div>
+          </div>
+          <button className="btn ghost icon" onClick={() => goWeek(addDays(week, 7))} aria-label="Semaine suivante"><ChevronRight size={24} /></button>
         </div>
-        <button className="btn ghost icon" onClick={() => goWeek(addDays(week, 7))} aria-label="Semaine suivante"><ChevronRight size={24} /></button>
+        {items && items.length > 0 && (
+          <div className="shop-count">
+            <span><strong>{remaining}</strong> à acheter{done.length ? <span className="muted"> · {done.length} dans le chariot</span> : null}</span>
+            {remaining > 0 && <button className="btn ghost small-btn" onClick={shareList}><Share2 size={16} /> Partager</button>}
+          </div>
+        )}
       </div>
-
-      {remaining > 0 && (
-        <div className="row between">
-          <button className="btn small-btn" onClick={shareList}><Share2 size={16} /> Partager la liste</button>
-          {shared && <span className="muted small" role="status">{shared}</span>}
-        </div>
-      )}
 
       {(!online || pending > 0) && (
         <div className="offline-banner" role="status">
@@ -307,11 +335,6 @@ export default function Shopping() {
         <p className="warn small inline-icon"><TriangleAlert size={16} /> Sans ingrédients saisis, donc absentes de la liste : {missing.join(', ')}.</p>
       )}
 
-      <form className="row" onSubmit={addManual}>
-        <input style={{ flex: 1, minWidth: 0 }} value={newLabel} onChange={(e) => setNewLabel(e.target.value)}
-          placeholder="Ajouter un article (lait, éponges…)" aria-label="Ajouter un article" enterKeyHint="done" />
-        <button className="btn primary" disabled={!newLabel.trim()}>Ajouter</button>
-      </form>
 
       {items === null ? <p className="muted">Chargement…</p> : items.length === 0 ? (
         <div className="empty">
@@ -362,6 +385,21 @@ export default function Shopping() {
         <Repeat size={16} /> Articles de chaque semaine{recurring.length ? ` (${recurring.length})` : ''}
       </button>
 
+      <form className="add-bar" onSubmit={addManual}>
+        <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)}
+          placeholder="Ajouter un article…" aria-label="Ajouter un article" enterKeyHint="done" />
+        <button className="btn primary icon" disabled={!newLabel.trim()} aria-label="Ajouter"><Plus size={22} /></button>
+      </form>
+
+      {toast && (
+        <div className="toast" role="status">
+          <span>{toast.msg}</span>
+          {toast.undo && (
+            <button className="btn ghost small-btn" onClick={() => { toast.undo!(); setToast(null); clearTimeout(toastTimer.current) }}>Annuler</button>
+          )}
+        </div>
+      )}
+
       {showRecurring && household && (
         <RecurringSheet
           items={recurring}
@@ -383,15 +421,26 @@ export default function Shopping() {
                 {amounts(selected).detail && <span className="muted"> · il en faut {amounts(selected).detail}</span>}</div>
             )}
             {selected.sources.length > 0 && <p className="muted small" style={{ margin: 0 }}>Pour : {selected.sources.join(', ')}</p>}
-            {selected.origin === 'manual' && <p className="muted small" style={{ margin: 0 }}>Ajouté à la main</p>}
             {selected.origin === 'recurring' && <p className="muted small inline-icon" style={{ margin: 0 }}><Repeat size={14} /> Ajouté chaque semaine</p>}
+
+            <div className="sheet-section">Cette semaine</div>
+            {selected.origin === 'manual' ? (
+              <button className="btn" onClick={() => remove(selected)}><Trash2 size={16} /> Supprimer de la liste</button>
+            ) : selected.hidden ? (
+              <button className="btn" onClick={() => { update(selected, { hidden: false }); setSelected(null) }}>Remettre dans la liste</button>
+            ) : (
+              <button className="btn" onClick={() => hide(selected)}>
+                <House size={16} /> {selected.origin === 'recurring' ? 'Pas besoin cette semaine' : "J'en ai déjà à la maison"}
+              </button>
+            )}
+
+            <div className="sheet-section">Toujours <span className="muted small">(retenu pour les prochaines listes)</span></div>
             <label className="field">
               <span>Rayon</span>
               <select value={selected.aisle_id ?? ''} onChange={(e) => void setAisle(selected, e.target.value || null)}>
                 <option value="">Sans rayon</option>
                 {aisles.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
-              {selected.ingredient_id && <small className="muted">Retenu pour les prochaines listes.</small>}
             </label>
             {selected.ingredient_id && selected.origin === 'menu' && (
               <PackEditor key={selected.id} unit={selected.unit}
@@ -402,21 +451,14 @@ export default function Shopping() {
             {selected.ingredient_id && (
               <label className="toggle-row">
                 <input type="checkbox" checked={selected.is_staple} onChange={(e) => void setStaple(selected, e.target.checked)} />
-                <span>Produit du placard <span className="muted small">(sel, huile… : rangé à part, à vérifier)</span></span>
+                <span>Produit du placard <span className="muted small">(on en a toujours : rangé à part, à vérifier)</span></span>
               </label>
             )}
             {selected.origin === 'manual' && (
               <button className="btn" onClick={() => void makeRecurring(selected)}><Repeat size={16} /> En acheter chaque semaine</button>
             )}
             {selected.origin === 'recurring' && selected.recurring_id && (
-              <button className="btn" onClick={() => void stopRecurring(selected.recurring_id!)}>Ne plus l'ajouter chaque semaine</button>
-            )}
-            {selected.origin === 'manual' ? (
-              <button className="btn ghost danger" onClick={() => remove(selected)}>Supprimer</button>
-            ) : (
-              <button className="btn" onClick={() => { update(selected, { hidden: !selected.hidden }); setSelected(null) }}>
-                {selected.hidden ? 'Remettre dans la liste' : selected.origin === 'recurring' ? 'Pas besoin cette semaine' : "J'en ai déjà à la maison"}
-              </button>
+              <button className="btn ghost" onClick={() => void stopRecurring(selected.recurring_id!)}>Ne plus l'ajouter chaque semaine</button>
             )}
           </div>
         </Sheet>

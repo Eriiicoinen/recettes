@@ -491,3 +491,34 @@ h2.inline-icon, .inline-icon { display: inline-flex; align-items: center; gap: 8
   border-radius: var(--radius); box-shadow: var(--shadow-lg);
 }
 .save-bar .btn.primary { flex: 1; }
+
+/* ---------- Courses : en-tête collant, ajout en bas, annuler ---------- */
+.shop-head {
+  position: sticky; top: 0; z-index: 6; margin: calc(-1 * max(20px, env(safe-area-inset-top))) -16px 0;
+  padding: max(12px, env(safe-area-inset-top)) 16px 8px;
+  background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+.shop-count { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; padding: 0 4px; }
+.shop-count strong { font-family: var(--font-display); font-size: 1.25rem; }
+.add-bar {
+  position: sticky; bottom: calc(var(--tabbar-h) + 10px + env(safe-area-inset-bottom)); z-index: 5;
+  display: flex; gap: 8px; padding: 8px; margin: 0 -6px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-radius: var(--radius); box-shadow: var(--shadow-lg);
+}
+.add-bar input { flex: 1; min-width: 0; border: 0; background: transparent; }
+.add-bar input:focus { outline: none; }
+.add-bar .btn.icon { min-width: 48px; padding: 0; }
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 40;
+  bottom: calc(var(--tabbar-h) + 84px + env(safe-area-inset-bottom));
+  width: min(calc(100% - 32px), 440px); display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 8px 8px 16px; border-radius: 14px; background: var(--text); color: var(--bg); box-shadow: var(--shadow-lg);
+  animation: toast-in .2s ease-out;
+}
+.toast .btn { color: var(--accent-soft); font-weight: 700; }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+.sheet-section { font-size: .78rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin-top: 6px; }
+.aisle-title { font-family: var(--font-body); font-weight: 700; letter-spacing: .06em; }
