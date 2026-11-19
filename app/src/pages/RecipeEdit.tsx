@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { guessAisle } from '../lib/aisleGuess'
+import { findBySource, importRecipe } from '../lib/importRecipe'
 import { parseIngredientLine } from '../lib/parseLine'
 import {
   CATEGORIES, emptyDraft, getRecipe, listAisles, listIngredients, ingKey, parseQty, saveRecipe, SEASONS, UNITS,
@@ -40,11 +41,49 @@ export default function RecipeEdit() {
   const [loading, setLoading] = useState(!!id)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [importInput, setImportInput] = useState(() => searchParams.get('import') ?? '')
+  const [importing, setImporting] = useState(false)
+  const [importError, setImportError] = useState('')
+  const [imported, setImported] = useState(false)
+  const [duplicate, setDuplicate] = useState<{ id: string; name: string } | null>(null)
+  const autoImportDone = useRef(false)
 
   useEffect(() => {
     if (!household) return
     void listIngredients(household.id).then(setIngredients)
     void listAisles(household.id).then(setAisles)
+  }, [household])
+
+  async function runImport(input = importInput) {
+    if (!household || !input.trim()) return
+    setImporting(true)
+    setImportError('')
+    setDuplicate(null)
+    try {
+      const a = aisles.length ? aisles : await listAisles(household.id)
+      const { draft: d, lines } = await importRecipe(input, a)
+      setDraft(d)
+      setRows([...lines.map(toRow), blankRow()])
+      setStepsText(d.steps.join('\n'))
+      setTagsText(d.tags.join(', '))
+      setImported(true)
+      setDuplicate(await findBySource(household.id, d.source_url))
+    } catch (e) {
+      setImportError((e as Error).message)
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  // Arrivée depuis le bouton Partager du téléphone : import automatique
+  useEffect(() => {
+    const shared = searchParams.get('import')
+    if (!shared || !household || autoImportDone.current) return
+    autoImportDone.current = true
+    setSearchParams({}, { replace: true })
+    void runImport(shared)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [household])
 
   useEffect(() => {
@@ -136,6 +175,30 @@ export default function RecipeEdit() {
       </div>
       <h1 style={{ margin: 0 }}>{id ? 'Modifier la recette' : 'Nouvelle recette'}</h1>
       {error && <p className="error" role="alert">{error}</p>}
+
+      {!id && !imported && (
+        <div className="card stack import-card">
+          <h2>✨ Importer</h2>
+          <textarea rows={3} value={importInput} onChange={(e) => setImportInput(e.target.value)} disabled={importing}
+            placeholder="Colle le lien d'une recette (Marmiton, 750g, un blog…) ou le texte complet d'une recette" />
+          <button type="button" className="btn primary" onClick={() => runImport()} disabled={importing || !importInput.trim()}>
+            {importing ? 'Lecture de la recette…' : 'Importer'}
+          </button>
+          {importing && <p className="muted small" style={{ margin: 0 }}>Ça prend 10 à 30 secondes.</p>}
+          {importError && <p className="error" role="alert" style={{ margin: 0 }}>{importError}</p>}
+          <p className="muted small" style={{ margin: 0 }}>Ou remplis la fiche à la main ci-dessous.</p>
+        </div>
+      )}
+      {imported && (
+        <div className="card import-done">
+          <strong>Recette importée.</strong> Vérifie la fiche, puis touche <strong>Enregistrer</strong>.
+          {duplicate && (
+            <p style={{ margin: '8px 0 0' }}>
+              ⚠️ Tu as déjà cette recette : <Link to={`/recettes/${duplicate.id}`}>{duplicate.name}</Link>
+            </p>
+          )}
+        </div>
+      )}
 
       <label className="field">
         <span>Nom</span>

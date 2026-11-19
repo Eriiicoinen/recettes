@@ -181,3 +181,8 @@ textarea { min-height: 0; resize: vertical; line-height: 1.5; }
   .ing-qty { width: 52px; }
   .ing-unit { width: 68px; }
 }
+
+/* ---------- M2 : import ---------- */
+.import-card { border-color: var(--accent); background: var(--accent-soft); }
+.import-card textarea { background: var(--surface); }
+.import-done { border-color: var(--accent); }

@@ -1,4 +1,5 @@
-import { HashRouter, Navigate, NavLink, Route, Routes } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { HashRouter, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom'
 import { SessionProvider, useSession } from './lib/session'
 import { configMissing } from './lib/supabase'
 import Login from './pages/Login'
@@ -16,6 +17,29 @@ const TABS = [
   { to: '/reglages', label: 'Réglages', icon: '⚙️' },
 ]
 
+/** Lien ou texte reçu via le menu Partager (?url=, ?text=) ou un Raccourci iPhone (?import=). */
+function readShared(): string | null {
+  const p = new URLSearchParams(window.location.search)
+  const value = p.get('import') || p.get('url') || p.get('text')
+  if (!value) return null
+  // Nettoie l'adresse pour qu'un rechargement ne relance pas l'import
+  window.history.replaceState(null, '', window.location.pathname + window.location.hash)
+  return value
+}
+const sharedAtLaunch = readShared()
+
+function ShareHandler() {
+  const navigate = useNavigate()
+  const { household } = useSession()
+  const done = useRef(false)
+  useEffect(() => {
+    if (!sharedAtLaunch || !household || done.current) return
+    done.current = true
+    navigate(`/recettes/nouvelle?import=${encodeURIComponent(sharedAtLaunch)}`)
+  }, [household, navigate])
+  return null
+}
+
 function Shell() {
   const { session, household, loading } = useSession()
 
@@ -28,6 +52,7 @@ function Shell() {
 
   return (
     <div className="app">
+      <ShareHandler />
       <div className="content">
         <Routes>
           <Route path="/recettes" element={<RecipeList />} />

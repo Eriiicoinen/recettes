@@ -23,6 +23,12 @@ export default defineConfig({
         orientation: 'portrait',
         background_color: '#faf7f2',
         theme_color: '#c2562b',
+        // Android : l'app apparaît dans le menu Partager. iPhone : via un Raccourci qui ouvre ?import=<lien>
+        share_target: {
+          action: base,
+          method: 'GET',
+          params: { title: 'title', text: 'text', url: 'url' },
+        },
         icons: [
           { src: 'pwa-64x64.png', sizes: '64x64', type: 'image/png' },
           { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
