@@ -11,7 +11,7 @@ const SEASONS = ['Printemps', 'Été', 'Automne', 'Hiver']
 const UNITS = ['g', 'kg', 'ml', 'cl', 'l', 'c. à s.', 'c. à c.', 'pièce', 'gousse', 'botte', 'tranche', 'pincée',
   'sachet', 'boîte', 'pot', 'verre', 'tasse', 'feuille', 'brin']
 
-type Ctx = { db: SupabaseClient; householdId: string; userId: string }
+type Ctx = { db: SupabaseClient; householdId: string; userId: string; weekStartDow: number }
 type RpcMessage = { jsonrpc: '2.0'; id?: string | number | null; method?: string; params?: Record<string, unknown> }
 
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
@@ -115,7 +115,7 @@ async function toolDefinitions(ctx: Ctx) {
         "Ajoute une recette du carnet (id obtenu avec search_recipes ou add_recipe) au menu d'une semaine. " +
         "Sans day : elle rejoint « Recettes de la semaine » (compte pour la liste de courses, sans jour précis). " +
         "Avec day (AAAA-MM-JJ) et meal : placée sur ce créneau. Pour un repas sans recette (« restes », « resto »), utilise free_text au lieu de recipe_id. " +
-        `Aujourd'hui : voir get_week. Semaines du lundi au dimanche, fuseau Europe/Paris.`,
+        `Aujourd'hui : voir get_week. Les semaines commencent le jour choisi par le foyer (voir get_week pour les dates exactes), fuseau Europe/Paris.`,
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -304,7 +304,7 @@ async function getRecipe(ctx: Ctx, a: Record<string, unknown>) {
   ].join('\n'))
 }
 
-// ------------------------------------------------------------------ semaine (dates Europe/Paris, semaines du lundi)
+// ------------------------------------------------------------------ semaine (dates Europe/Paris, début de semaine réglé par le foyer)
 
 const parisToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date())
 const isDate = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
@@ -313,17 +313,19 @@ function addDaysISO(iso: string, n: number) {
   d.setUTCDate(d.getUTCDate() + n)
   return d.toISOString().slice(0, 10)
 }
-function mondayOfISO(iso: string) {
-  const dow = (new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7
-  return addDaysISO(iso, -dow)
+/** Premier jour de la période (début de semaine réglé par le foyer : 0 = dimanche … 6 = samedi) contenant la date */
+function weekStartISO(iso: string, startDow: number) {
+  const dow = new Date(`${iso}T12:00:00Z`).getUTCDay()
+  return addDaysISO(iso, -((dow - startDow + 7) % 7))
 }
-function resolveWeek(week: unknown) {
+function resolveWeek(ctx: Ctx, week: unknown) {
   const today = parisToday()
-  if (week === 'next') return mondayOfISO(addDaysISO(today, 7))
-  if (isDate(week)) return mondayOfISO(week)
-  return mondayOfISO(today)
+  if (week === 'next') return weekStartISO(addDaysISO(today, 7), ctx.weekStartDow)
+  if (isDate(week)) return weekStartISO(week, ctx.weekStartDow)
+  return weekStartISO(today, ctx.weekStartDow)
 }
 const DAY_NAMES = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
+const dayName = (iso: string) => DAY_NAMES[(new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7]
 
 async function addToWeek(ctx: Ctx, a: Record<string, unknown>) {
   const recipeId = typeof a.recipe_id === 'string' ? a.recipe_id : null
@@ -338,7 +340,7 @@ async function addToWeek(ctx: Ctx, a: Record<string, unknown>) {
   }
   const day = isDate(a.day) ? a.day : null
   const meal = day ? (a.meal === 'midi' ? 'midi' : 'soir') : null
-  const weekStart = day ? mondayOfISO(day) : resolveWeek(a.week)
+  const weekStart = day ? weekStartISO(day, ctx.weekStartDow) : resolveWeek(ctx, a.week)
   // Par défaut : la taille du foyer pour une recette en personnes, le rendement d'origine pour une recette en pièces
   let servings: number | null = Number.isInteger(a.servings) && (a.servings as number) > 0 ? a.servings as number : null
   if (!servings && recipe) {
@@ -358,7 +360,7 @@ async function addToWeek(ctx: Ctx, a: Record<string, unknown>) {
 }
 
 async function getWeek(ctx: Ctx, a: Record<string, unknown>) {
-  const start = resolveWeek(a.week)
+  const start = resolveWeek(ctx, a.week)
   const { data, error } = await ctx.db.from('week_items')
     .select('day, meal, servings, free_text, recipe_id, recipes(name, servings, yield_unit)')
     .eq('household_id', ctx.householdId).eq('week_start', start).order('position').order('created_at')
@@ -368,7 +370,7 @@ async function getWeek(ctx: Ctx, a: Record<string, unknown>) {
   const label = (r: Row) => r.recipes
     ? `${r.recipes.name} (${r.servings ?? r.recipes.servings} ${r.recipes.yield_unit ?? 'pers.'}, id: ${r.recipe_id})`
     : r.free_text ?? '?'
-  const lines = [`Semaine du lundi ${start} au dimanche ${addDaysISO(start, 6)} — aujourd'hui : ${parisToday()}`, '']
+  const lines = [`Semaine du ${dayName(start)} ${start} au ${dayName(addDaysISO(start, 6))} ${addDaysISO(start, 6)} — aujourd'hui : ${parisToday()}`, '']
   const basket = rows.filter((r) => !r.day)
   lines.push('Recettes de la semaine (sans jour précis) :', ...(basket.length ? basket.map((r) => `- ${label(r)}`) : ['- (aucune)']), '')
   for (let i = 0; i < 7; i++) {
@@ -390,9 +392,9 @@ function fmtAmount(q: number | null, unit: string | null) {
 }
 
 async function getShoppingList(ctx: Ctx, a: Record<string, unknown>) {
-  const week = resolveWeek(a.week)
+  const week = resolveWeek(ctx, a.week)
   const { data: sync, error: syncErr } = await ctx.db.rpc('sync_shopping_list', {
-    p_household: ctx.householdId, p_week: week, p_carry_manual: week === resolveWeek('this'),
+    p_household: ctx.householdId, p_week: week, p_carry_manual: week === resolveWeek(ctx, 'this'),
   })
   if (syncErr) return text(`Calcul impossible : ${syncErr.message}`, true)
   const [{ data: items, error: itemsErr }, { data: aisles, error: aislesErr }] = await Promise.all([
@@ -414,14 +416,14 @@ async function getShoppingList(ctx: Ctx, a: Record<string, unknown>) {
   if (staples.length) out.push('', 'Placard (à vérifier) :', ...staples.map(line))
   const missing = (sync?.missing ?? []) as string[]
   if (missing.length) out.push('', `Recettes sans ingrédients saisis (absentes de la liste) : ${missing.join(', ')}`)
-  out.push('', `Liste : ${APP_URL}/courses${week === resolveWeek('this') ? '' : `?s=${week}`}`)
+  out.push('', `Liste : ${APP_URL}/courses${week === resolveWeek(ctx, 'this') ? '' : `?s=${week}`}`)
   return text(out.join('\n'))
 }
 
 async function addShoppingItem(ctx: Ctx, a: Record<string, unknown>) {
   const labels = (Array.isArray(a.items) ? a.items : []).map((s) => String(s).trim()).filter(Boolean).slice(0, 50)
   if (!labels.length) return text('Aucun article à ajouter.', true)
-  const week = resolveWeek(a.week)
+  const week = resolveWeek(ctx, a.week)
   const [{ data: known }, { data: aisles }] = await Promise.all([
     ctx.db.from('ingredients').select('name, aisle_id').eq('household_id', ctx.householdId),
     ctx.db.from('aisles').select('id, name').eq('household_id', ctx.householdId),
@@ -434,7 +436,7 @@ async function addShoppingItem(ctx: Ctx, a: Record<string, unknown>) {
     aisle_id: aisleOf.get(ingKey(l)) ?? aisleId(guessAisleName(l)) ?? aisleId('Autre'),
   })))
   if (error) return text(`Ajout impossible : ${error.message}`, true)
-  return text(`Ajouté à la liste de courses : ${labels.join(', ')}. Liste : ${APP_URL}/courses${week === resolveWeek('this') ? '' : `?s=${week}`}`)
+  return text(`Ajouté à la liste de courses : ${labels.join(', ')}. Liste : ${APP_URL}/courses${week === resolveWeek(ctx, 'this') ? '' : `?s=${week}`}`)
 }
 
 // ------------------------------------------------------------------ JSON-RPC
@@ -500,7 +502,8 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 })
 
   void db.from('connector_tokens').update({ last_used_at: new Date().toISOString() }).eq('id', tok.id).then(() => {})
-  const ctx: Ctx = { db, householdId: tok.household_id, userId: tok.user_id }
+  const { data: hh } = await db.from('households').select('week_start_dow').eq('id', tok.household_id).single()
+  const ctx: Ctx = { db, householdId: tok.household_id, userId: tok.user_id, weekStartDow: hh?.week_start_dow ?? 1 }
 
   let body: RpcMessage | RpcMessage[]
   try { body = await req.json() } catch {

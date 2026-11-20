@@ -1,5 +1,5 @@
 // Rappels par notification.
-// - Appel planifié (dimanche soir, en-tête x-reminder-key) : prévient les foyers dont le menu de la semaine prochaine est vide ou presque.
+// - Appel planifié (chaque soir, en-tête x-reminder-key ; envoi la veille du début de semaine de chaque foyer) : prévient les foyers dont le menu de la semaine prochaine est vide ou presque.
 // - Appel d'un utilisateur connecté (bouton « Tester ») : notification de test sur ses propres téléphones.
 import { createClient } from 'npm:@supabase/supabase-js@2.119.2'
 import webpush from 'npm:web-push@3.6.7'
@@ -15,12 +15,12 @@ const json = (body: unknown, status = 200) =>
 type Sub = { endpoint: string; p256dh: string; auth: string; household_id: string; user_id: string }
 type Payload = { title: string; body: string; url: string }
 
-/** Lundi prochain (heure de Paris), au format AAAA-MM-JJ. */
-function nextMonday() {
+/** Demain (heure de Paris), au format AAAA-MM-JJ, et son jour de la semaine (0 = dimanche). */
+function tomorrow() {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' })
   const d = new Date(`${today}T12:00:00Z`)
-  d.setUTCDate(d.getUTCDate() + ((8 - d.getUTCDay()) % 7 || 7))
-  return d.toISOString().slice(0, 10)
+  d.setUTCDate(d.getUTCDate() + 1)
+  return { iso: d.toISOString().slice(0, 10), dow: d.getUTCDay() }
 }
 
 Deno.serve(async (req) => {
@@ -38,11 +38,14 @@ Deno.serve(async (req) => {
     const { data, error } = await admin.from('push_subscriptions').select('endpoint, p256dh, auth, household_id, user_id')
     if (error) return json({ error: error.message }, 500)
     subs = data as Sub[]
-    const monday = nextMonday()
+    // Appel quotidien : seuls les foyers dont la semaine commence demain sont prévenus (la veille au soir)
+    const next = tomorrow()
     payloadFor = async (householdId) => {
+      const { data: hh } = await admin.from('households').select('week_start_dow').eq('id', householdId).single()
+      if ((hh?.week_start_dow ?? 1) !== next.dow) return null
       const { count } = await admin.from('week_items').select('id', { count: 'exact', head: true })
-        .eq('household_id', householdId).eq('week_start', monday)
-      const url = `#/semaine?s=${monday}`
+        .eq('household_id', householdId).eq('week_start', next.iso)
+      const url = `#/semaine?s=${next.iso}`
       if (!count) return { title: '📅 Menu de la semaine prochaine', body: "Rien n'est encore prévu. Touche ici puis « ✨ Remplir ma semaine ».", url }
       if (count < 4) return { title: '📅 Menu de la semaine prochaine', body: `Seulement ${count} repas prévu${count > 1 ? 's' : ''} pour l'instant.`, url }
       return null

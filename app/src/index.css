@@ -558,3 +558,6 @@ h2.inline-icon, .inline-icon { display: inline-flex; align-items: center; gap: 8
 .drag-ghost { animation: lift .18s ease-out; }
 @keyframes lift { from { transform: translate(-50%, -60%) scale(.9); opacity: .4; } }
 @media (prefers-reduced-motion: reduce) { .drag-ghost { animation: none; } .wchip:active { transform: none; } }
+.week-start { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.week-start select { min-height: 40px; }
+.week-start.compact select.chip { min-height: 32px; padding: 0 26px 0 10px; }

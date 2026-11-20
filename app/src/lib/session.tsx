@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js'
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { clearCaches, clearQueue } from './offline'
+import { setWeekStartDow } from './week'
 import { supabase, type Household, type Member } from './supabase'
 
 type Ctx = {
@@ -30,7 +31,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const cacheKey = `recettes.household.${uid}`
     const { data: m, error } = await supabase
       .from('household_members')
-      .select('household_id, user_id, display_name, households(id, name, invite_code, people)')
+      .select('household_id, user_id, display_name, households(id, name, invite_code, people, week_start_dow)')
       .eq('user_id', uid)
       .order('joined_at')
       .limit(1)
@@ -39,12 +40,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // Hors ligne (au magasin) : on reprend le foyer mémorisé plutôt que d'afficher l'écran d'accueil
       try {
         const cached = JSON.parse(localStorage.getItem(cacheKey) ?? 'null') as { me: Member; household: Household } | null
-        if (cached) { setMe(cached.me); setHousehold(cached.household) }
+        if (cached) { setWeekStartDow(cached.household.week_start_dow); setMe(cached.me); setHousehold(cached.household) }
       } catch { /* pas de cache */ }
       return
     }
     if (m) {
       const { households, ...member } = m as unknown as Member & { households: Household }
+      setWeekStartDow(households.week_start_dow)
       setMe(member)
       setHousehold(households)
       try { localStorage.setItem(cacheKey, JSON.stringify({ me: member, household: households })) } catch { /* stockage plein ou bloqué */ }

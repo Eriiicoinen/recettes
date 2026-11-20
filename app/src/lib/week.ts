@@ -35,10 +35,16 @@ export function addDays(iso: string, n: number) {
   d.setDate(d.getDate() + n)
   return toISO(d)
 }
-/** Lundi de la semaine contenant la date */
-export function mondayOf(iso: string) {
+// Jour de début de semaine du foyer (0 = dimanche … 6 = samedi ; lundi par défaut), fixé à l'ouverture de la session
+let weekStartDow = 1
+export function setWeekStartDow(dow: number | null | undefined) { weekStartDow = dow ?? 1 }
+export const getWeekStartDow = () => weekStartDow
+export const DOW_NAMES = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi']
+
+/** Premier jour de la semaine (selon le réglage du foyer) contenant la date */
+export function weekStartOf(iso: string) {
   const d = fromISO(iso)
-  return addDays(iso, -((d.getDay() + 6) % 7))
+  return addDays(iso, -((d.getDay() - weekStartDow + 7) % 7))
 }
 export const weekDays = (start: string) => Array.from({ length: 7 }, (_, i) => addDays(start, i))
 
@@ -56,7 +62,7 @@ export function weekLabel(start: string) {
   return `${fa} – ${fb}`
 }
 export function relativeWeek(start: string) {
-  const diff = Math.round((fromISO(start).getTime() - fromISO(mondayOf(todayISO())).getTime()) / (7 * 86400000))
+  const diff = Math.round((fromISO(start).getTime() - fromISO(weekStartOf(todayISO())).getTime()) / (7 * 86400000))
   if (diff === 0) return 'Cette semaine'
   if (diff === 1) return 'Semaine prochaine'
   if (diff === -1) return 'Semaine dernière'
@@ -147,7 +153,7 @@ export async function makeLeftovers(item: WeekItem, recipe: Recipe, people: numb
   if (!item.day || !item.meal) throw new Error("Place d'abord ce repas sur un jour.")
   await updateWeekItem(item.id, { servings: (item.servings ?? defaultServings(recipe, people)) * 2 })
   const next = nextSlot(item.day, item.meal)
-  await addToWeek(item.household_id, mondayOf(next.day), { free_text: `Restes : ${recipe.name}`, ...next, leftover_of: item.id })
+  await addToWeek(item.household_id, weekStartOf(next.day), { free_text: `Restes : ${recipe.name}`, ...next, leftover_of: item.id })
 }
 
 /** Supprime des restes : le plat d'origine repasse à des quantités simples. */
@@ -362,4 +368,11 @@ export async function listDays(householdId: string, days: string[]): Promise<Wee
     .eq('household_id', householdId).in('day', days).order('position').order('created_at')
   if (error) throw error
   return data as WeekItem[]
+}
+
+/** Change le début de semaine du foyer ; menus et courses sont regroupés dans la nouvelle découpe. */
+export async function changeWeekStart(householdId: string, dow: number) {
+  const { error } = await supabase.rpc('set_week_start', { p_household: householdId, p_dow: dow })
+  if (error) throw error
+  setWeekStartDow(dow)
 }

@@ -5,6 +5,7 @@ import CopyWeekSheet from '../components/week/CopyWeekSheet'
 import FillSheet from '../components/week/FillSheet'
 import ItemSheet from '../components/week/ItemSheet'
 import PlanSheet from '../components/week/PlanSheet'
+import WeekStartSelect from '../components/WeekStartSelect'
 import RecipePicker from '../components/week/RecipePicker'
 import { useDragMeal, type DropKey } from '../components/week/useDragMeal'
 import { listRecipes, listStats, type Recipe, type RecipeStats } from '../lib/recipes'
@@ -13,7 +14,7 @@ import { useSession } from '../lib/session'
 import { supabase, type Member } from '../lib/supabase'
 import {
   addDays, addToWeek, applyProposals, copyWeek, dayLabel, defaultServings, fromISO, lastCookedMap, listWeek, makeLeftovers,
-  MEALS, mondayOf, relativeWeek, removeLeftovers, removeWeekItem, todayISO, updateWeekItem, weekDays, weekLabel, type Meal,
+  MEALS, weekStartOf, relativeWeek, removeLeftovers, removeWeekItem, todayISO, updateWeekItem, weekDays, weekLabel, type Meal,
   type WeekItem,
 } from '../lib/week'
 
@@ -29,7 +30,7 @@ function shortDay(iso: string) {
 export default function Week() {
   const { household } = useSession()
   const [params, setParams] = useSearchParams()
-  const start = mondayOf(params.get('s') ?? todayISO())
+  const start = weekStartOf(params.get('s') ?? todayISO())
   const today = todayISO()
 
   const [items, setItems] = useState<WeekItem[] | null>(null)
@@ -78,7 +79,7 @@ export default function Week() {
   const planned = new Set((items ?? []).filter((i) => i.day).map((i) => `${i.day}|${i.meal}`)).size
   const editable = days[6] >= today
 
-  const goWeek = (s: string) => setParams(s === mondayOf(today) ? {} : { s }, { replace: true })
+  const goWeek = (s: string) => setParams(s === weekStartOf(today) ? {} : { s }, { replace: true })
 
   function itemName(i: WeekItem) {
     return i.recipe_id ? recipes.get(i.recipe_id)?.name ?? 'Recette supprimée' : i.free_text ?? ''
@@ -188,9 +189,12 @@ export default function Week() {
         </div>
         <button className="btn ghost icon" onClick={() => goWeek(addDays(start, 7))} aria-label="Semaine suivante"><ChevronRight size={24} /></button>
       </div>
-      {start !== mondayOf(today) && (
-        <button className="btn ghost small-btn" style={{ alignSelf: 'center' }} onClick={() => goWeek(mondayOf(today))}>Revenir à cette semaine</button>
-      )}
+      <div className="row wrap" style={{ justifyContent: 'center', gap: 8 }}>
+        {!moving && <WeekStartSelect compact />}
+        {start !== weekStartOf(today) && (
+          <button className="btn ghost small-btn" onClick={() => goWeek(weekStartOf(today))}>Revenir à cette semaine</button>
+        )}
+      </div>
 
       {moving ? (
         <div className="move-banner" role="status">

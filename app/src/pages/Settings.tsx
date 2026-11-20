@@ -7,6 +7,7 @@ import { useRealtime } from '../lib/realtime'
 import NotificationsCard from '../components/NotificationsCard'
 import { inviteLink } from '../lib/launch'
 import { disablePush } from '../lib/push'
+import WeekStartSelect from '../components/WeekStartSelect'
 import ConnectorCard from './ConnectorCard'
 
 export default function Settings() {
@@ -113,6 +114,15 @@ export default function Settings() {
       </div>
 
       {session && <NotificationsCard householdId={household.id} userId={session.user.id} />}
+
+      <div className="card stack">
+        <h2>Semaine</h2>
+        <WeekStartSelect />
+        <p className="muted small" style={{ margin: 0 }}>
+          Pour le menu, la liste de courses et le rappel (envoyé la veille au soir). Par exemple samedi si vous faites les courses le samedi.
+          Les repas déjà prévus gardent leur jour ; la liste se recalcule (les cases cochées des articles du menu repartent à zéro).
+        </p>
+      </div>
 
       <ConnectorCard householdId={household.id} />
 

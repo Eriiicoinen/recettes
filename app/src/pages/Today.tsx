@@ -10,7 +10,7 @@ import { useSession } from '../lib/session'
 import { listItems } from '../lib/shopping'
 import { supabase, type Member } from '../lib/supabase'
 import {
-  addDays, addToWeek, defaultServings, listDays, listWeek, mondayOf, removeWeekItem, todayISO, updateWeekItem, type Meal, type WeekItem,
+  addDays, addToWeek, defaultServings, listDays, listWeek, weekStartOf, removeWeekItem, todayISO, updateWeekItem, type Meal, type WeekItem,
 } from '../lib/week'
 
 type Summary = { toBuy: number; planned: number }
@@ -21,7 +21,7 @@ export default function Today() {
   const navigate = useNavigate()
   const today = todayISO()
   const tomorrow = addDays(today, 1)
-  const week = mondayOf(today)
+  const week = weekStartOf(today)
 
   const [items, setItems] = useState<WeekItem[] | null>(null)
   const [recipes, setRecipes] = useState<Map<string, Recipe>>(new Map())
@@ -143,7 +143,7 @@ export default function Today() {
       })}
 
       {items && (
-        <Link to={mondayOf(tomorrow) === week ? '/semaine' : `/semaine?s=${mondayOf(tomorrow)}`} className="card tomorrow">
+        <Link to={weekStartOf(tomorrow) === week ? '/semaine' : `/semaine?s=${weekStartOf(tomorrow)}`} className="card tomorrow">
           <div className="meal-label">Demain</div>
           <div className="small">
             {(['midi', 'soir'] as Meal[]).map((m) => {
@@ -180,13 +180,13 @@ export default function Today() {
           title={picking.meal === 'midi' ? (picking.day === today ? 'Ce midi' : 'Midi') : picking.day === today ? 'Ce soir' : 'Soir'}
           householdId={household.id}
           people={household.people}
-          basket={mondayOf(picking.day) === week ? basket : []}
+          basket={weekStartOf(picking.day) === week ? basket : []}
           basketName={name}
-          onPickRecipe={(r) => void replace(picking, () => addToWeek(household.id, mondayOf(picking.day), {
+          onPickRecipe={(r) => void replace(picking, () => addToWeek(household.id, weekStartOf(picking.day), {
             recipe_id: r.id, servings: defaultServings(r, household.people), ...picking,
           }))}
           onPickBasket={(item) => void replace(picking, () => updateWeekItem(item.id, picking))}
-          onFreeText={(t) => void replace(picking, () => addToWeek(household.id, mondayOf(picking.day), { free_text: t, ...picking }))}
+          onFreeText={(t) => void replace(picking, () => addToWeek(household.id, weekStartOf(picking.day), { free_text: t, ...picking }))}
           onClose={() => setPicking(null)}
         />
       )}

@@ -16,15 +16,15 @@ import {
 import { haptic } from '../lib/haptics'
 import { useRealtime } from '../lib/realtime'
 import { supabase, type Member } from '../lib/supabase'
-import { addDays, mondayOf, relativeWeek, todayISO, weekLabel } from '../lib/week'
+import { addDays, weekStartOf, relativeWeek, todayISO, weekLabel } from '../lib/week'
 
 type Cache = { items: ShoppingItem[]; aisles: Aisle[]; members: Member[]; missing: string[]; ingredients?: Ingredient[]; products?: [string, StoreProduct][] }
 
 export default function Shopping() {
   const { household, me } = useSession()
   const [params, setParams] = useSearchParams()
-  const thisWeek = mondayOf(todayISO())
-  const week = mondayOf(params.get('s') ?? todayISO())
+  const thisWeek = weekStartOf(todayISO())
+  const week = weekStartOf(params.get('s') ?? todayISO())
   const cacheKey = household ? `recettes.shopping.${household.id}.${week}` : ''
 
   const [items, setItems] = useState<ShoppingItem[] | null>(null)
