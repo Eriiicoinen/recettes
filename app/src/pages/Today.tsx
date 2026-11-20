@@ -10,7 +10,7 @@ import { useSession } from '../lib/session'
 import { listItems } from '../lib/shopping'
 import { supabase, type Member } from '../lib/supabase'
 import {
-  addDays, addToWeek, defaultServings, listDays, listWeek, weekStartOf, removeWeekItem, todayISO, updateWeekItem, type Meal, type WeekItem,
+  addDays, addToWeek, defaultServings, relativeWeek, weekDays, listDays, listWeek, weekStartOf, removeWeekItem, todayISO, updateWeekItem, type Meal, type WeekItem,
 } from '../lib/week'
 
 type Summary = { toBuy: number; planned: number }
@@ -165,13 +165,13 @@ export default function Today() {
           </Link>
           <Link to="/semaine" className="card stat">
             <CalendarDays size={22} className="stat-icon" />
-            <div className="stat-value">{summary.planned}<span className="muted small"> / 14</span></div>
-            <div className="muted small">repas prévus cette semaine</div>
-            <div className="meter" aria-hidden><span style={{ width: `${Math.min(100, (summary.planned / 14) * 100)}%` }} /></div>
+            <div className="stat-value">{summary.planned}<span className="muted small"> / {weekDays(week).length * 2}</span></div>
+            <div className="muted small">repas prévus {relativeWeek(week).toLowerCase()}</div>
+            <div className="meter" aria-hidden><span style={{ width: `${Math.min(100, (summary.planned / (weekDays(week).length * 2)) * 100)}%` }} /></div>
           </Link>
         </div>
       )}
-      {summary && summary.planned < 14 && (
+      {summary && summary.planned < weekDays(week).length * 2 && (
         <Link to="/semaine" className="btn soft"><Sparkles size={18} /> Planifier la semaine</Link>
       )}
 

@@ -3,6 +3,7 @@
 // URL : https://<projet>.supabase.co/functions/v1/mcp/<code secret>  — le code identifie le foyer.
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.119.2'
 import { guessAisleName } from '../_shared/aisleRules.ts'
+import { periodOf, type StoredPeriod } from '../_shared/period.ts'
 
 const APP_URL = 'https://eriiicoinen.github.io/recettes/#'
 const SUPPORTED_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26']
@@ -11,7 +12,7 @@ const SEASONS = ['Printemps', 'Été', 'Automne', 'Hiver']
 const UNITS = ['g', 'kg', 'ml', 'cl', 'l', 'c. à s.', 'c. à c.', 'pièce', 'gousse', 'botte', 'tranche', 'pincée',
   'sachet', 'boîte', 'pot', 'verre', 'tasse', 'feuille', 'brin']
 
-type Ctx = { db: SupabaseClient; householdId: string; userId: string; weekStartDow: number }
+type Ctx = { db: SupabaseClient; householdId: string; userId: string; weekStartDow: number; periods: StoredPeriod[] }
 type RpcMessage = { jsonrpc: '2.0'; id?: string | number | null; method?: string; params?: Record<string, unknown> }
 
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
@@ -115,7 +116,7 @@ async function toolDefinitions(ctx: Ctx) {
         "Ajoute une recette du carnet (id obtenu avec search_recipes ou add_recipe) au menu d'une semaine. " +
         "Sans day : elle rejoint « Recettes de la semaine » (compte pour la liste de courses, sans jour précis). " +
         "Avec day (AAAA-MM-JJ) et meal : placée sur ce créneau. Pour un repas sans recette (« restes », « resto »), utilise free_text au lieu de recipe_id. " +
-        `Aujourd'hui : voir get_week. Les semaines commencent le jour choisi par le foyer (voir get_week pour les dates exactes), fuseau Europe/Paris.`,
+        `Aujourd'hui : voir get_week. Le menu est découpé en périodes (souvent des semaines, parfois de longueur choisie par le foyer : voir get_week pour les dates exactes), fuseau Europe/Paris.`,
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -313,16 +314,13 @@ function addDaysISO(iso: string, n: number) {
   d.setUTCDate(d.getUTCDate() + n)
   return d.toISOString().slice(0, 10)
 }
-/** Premier jour de la période (début de semaine réglé par le foyer : 0 = dimanche … 6 = samedi) contenant la date */
-function weekStartISO(iso: string, startDow: number) {
-  const dow = new Date(`${iso}T12:00:00Z`).getUTCDay()
-  return addDaysISO(iso, -((dow - startDow + 7) % 7))
-}
+/** Premier jour de la période du foyer (semaine réglée ou période personnalisée) contenant la date */
+const periodAt = (ctx: Ctx, iso: string) => periodOf(iso, ctx.weekStartDow, ctx.periods)
 function resolveWeek(ctx: Ctx, week: unknown) {
   const today = parisToday()
-  if (week === 'next') return weekStartISO(addDaysISO(today, 7), ctx.weekStartDow)
-  if (isDate(week)) return weekStartISO(week, ctx.weekStartDow)
-  return weekStartISO(today, ctx.weekStartDow)
+  if (week === 'next') { const p = periodAt(ctx, today); return periodAt(ctx, addDaysISO(p.start, p.days)).start }
+  if (isDate(week)) return periodAt(ctx, week).start
+  return periodAt(ctx, today).start
 }
 const DAY_NAMES = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
 const dayName = (iso: string) => DAY_NAMES[(new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7]
@@ -340,7 +338,7 @@ async function addToWeek(ctx: Ctx, a: Record<string, unknown>) {
   }
   const day = isDate(a.day) ? a.day : null
   const meal = day ? (a.meal === 'midi' ? 'midi' : 'soir') : null
-  const weekStart = day ? weekStartISO(day, ctx.weekStartDow) : resolveWeek(ctx, a.week)
+  const weekStart = day ? periodAt(ctx, day).start : resolveWeek(ctx, a.week)
   // Par défaut : la taille du foyer pour une recette en personnes, le rendement d'origine pour une recette en pièces
   let servings: number | null = Number.isInteger(a.servings) && (a.servings as number) > 0 ? a.servings as number : null
   if (!servings && recipe) {
@@ -370,7 +368,7 @@ async function getWeek(ctx: Ctx, a: Record<string, unknown>) {
   const label = (r: Row) => r.recipes
     ? `${r.recipes.name} (${r.servings ?? r.recipes.servings} ${r.recipes.yield_unit ?? 'pers.'}, id: ${r.recipe_id})`
     : r.free_text ?? '?'
-  const lines = [`Semaine du ${dayName(start)} ${start} au ${dayName(addDaysISO(start, 6))} ${addDaysISO(start, 6)} — aujourd'hui : ${parisToday()}`, '']
+  const lines = [`Période du ${dayName(start)} ${start} au ${dayName(addDaysISO(start, periodAt(ctx, start).days - 1))} ${addDaysISO(start, periodAt(ctx, start).days - 1)} — aujourd'hui : ${parisToday()}`, '']
   const basket = rows.filter((r) => !r.day)
   lines.push('Recettes de la semaine (sans jour précis) :', ...(basket.length ? basket.map((r) => `- ${label(r)}`) : ['- (aucune)']), '')
   for (let i = 0; i < 7; i++) {
@@ -502,8 +500,11 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 })
 
   void db.from('connector_tokens').update({ last_used_at: new Date().toISOString() }).eq('id', tok.id).then(() => {})
-  const { data: hh } = await db.from('households').select('week_start_dow').eq('id', tok.household_id).single()
-  const ctx: Ctx = { db, householdId: tok.household_id, userId: tok.user_id, weekStartDow: hh?.week_start_dow ?? 1 }
+  const [{ data: hh }, { data: periods }] = await Promise.all([
+    db.from('households').select('week_start_dow').eq('id', tok.household_id).single(),
+    db.from('periods').select('start, days').eq('household_id', tok.household_id),
+  ])
+  const ctx: Ctx = { db, householdId: tok.household_id, userId: tok.user_id, weekStartDow: hh?.week_start_dow ?? 1, periods: (periods ?? []) as StoredPeriod[] }
 
   let body: RpcMessage | RpcMessage[]
   try { body = await req.json() } catch {

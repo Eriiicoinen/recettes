@@ -561,3 +561,4 @@ h2.inline-icon, .inline-icon { display: inline-flex; align-items: center; gap: 8
 .week-start { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .week-start select { min-height: 40px; }
 .week-start.compact select.chip { min-height: 32px; padding: 0 26px 0 10px; }
+.period-preview { margin: 0; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--accent-soft); }

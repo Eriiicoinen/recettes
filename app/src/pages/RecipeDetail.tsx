@@ -11,7 +11,7 @@ import Sheet from '../components/Sheet'
 import { deleteRecipePhotos, setRecipePhoto } from '../lib/photos'
 import { useSession } from '../lib/session'
 import { findDurations, formatClock, useTimers } from '../lib/timers'
-import { addDays, addToWeek, defaultServings, weekStartOf, relativeWeek, todayISO, weekLabel, weeksContaining } from '../lib/week'
+import { addToWeek, defaultServings, nextPeriodStart, weekStartOf, relativeWeek, todayISO, weekLabel, weeksContaining } from '../lib/week'
 
 type WakeLockSentinelLike = { release: () => Promise<void> }
 
@@ -75,7 +75,7 @@ export default function RecipeDetail() {
   async function openPlan() {
     if (!household || !recipe) return
     const thisWeek = weekStartOf(todayISO())
-    setInWeeks(await weeksContaining(household.id, recipe.id, [thisWeek, addDays(thisWeek, 7)]))
+    setInWeeks(await weeksContaining(household.id, recipe.id, [thisWeek, nextPeriodStart(thisWeek)]))
     setPlanOpen(true)
   }
 
@@ -195,7 +195,7 @@ export default function RecipeDetail() {
       {planOpen && (
         <Sheet title="Ajouter à quelle semaine ?" onClose={() => setPlanOpen(false)}>
           <div className="stack">
-            {[weekStartOf(todayISO()), addDays(weekStartOf(todayISO()), 7)].map((w) => (
+            {[weekStartOf(todayISO()), nextPeriodStart(weekStartOf(todayISO()))].map((w) => (
               <button key={w} className="pick-row" onClick={() => plan(w)}>
                 <span>{relativeWeek(w)} <span className="muted small">({weekLabel(w)})</span></span>
                 {inWeeks.has(w) && <span className="muted small">déjà prévue</span>}

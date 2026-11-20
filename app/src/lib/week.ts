@@ -1,4 +1,5 @@
 import type { Recipe, RecipeStats } from './recipes'
+import { periodOf, type Period, type StoredPeriod } from '../../../supabase/functions/_shared/period.ts'
 import { supabase } from './supabase'
 
 export type Meal = 'midi' | 'soir'
@@ -35,38 +36,68 @@ export function addDays(iso: string, n: number) {
   d.setDate(d.getDate() + n)
   return toISO(d)
 }
-// Jour de début de semaine du foyer (0 = dimanche … 6 = samedi ; lundi par défaut), fixé à l'ouverture de la session
+// Découpe du foyer : jour de début de semaine + périodes personnalisées (début + nombre de jours),
+// fixés à l'ouverture de la session. Règle commune avec la base : supabase/functions/_shared/period.ts
 let weekStartDow = 1
+let storedPeriods: StoredPeriod[] = []
 export function setWeekStartDow(dow: number | null | undefined) { weekStartDow = dow ?? 1 }
+export function setStoredPeriods(list: StoredPeriod[]) { storedPeriods = list }
 export const getWeekStartDow = () => weekStartDow
 export const DOW_NAMES = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi']
 
-/** Premier jour de la semaine (selon le réglage du foyer) contenant la date */
-export function weekStartOf(iso: string) {
-  const d = fromISO(iso)
-  return addDays(iso, -((d.getDay() - weekStartDow + 7) % 7))
+/** Période (début, nombre de jours, personnalisée ou non) contenant la date */
+export const periodAt = (iso: string): Period => periodOf(iso, weekStartDow, storedPeriods)
+/** Premier jour de la période contenant la date */
+export const weekStartOf = (iso: string) => periodAt(iso).start
+/** Jours de la période qui commence (ou contient) cette date */
+export function weekDays(start: string) {
+  const p = periodAt(start)
+  return Array.from({ length: p.days }, (_, i) => addDays(p.start, i))
 }
-export const weekDays = (start: string) => Array.from({ length: 7 }, (_, i) => addDays(start, i))
+export const nextPeriodStart = (start: string) => { const p = periodAt(start); return addDays(p.start, p.days) }
+export const prevPeriodStart = (start: string) => weekStartOf(addDays(periodAt(start).start, -1))
 
 export function dayLabel(iso: string) {
   const s = fromISO(iso).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'short' })
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
+/** « 21 – 25 nov. » ; avec le jour quand la période n'est pas une semaine classique : « sam. 21 – mer. 25 nov. » */
 export function weekLabel(start: string) {
-  const end = addDays(start, 6)
-  const a = fromISO(start)
-  const b = fromISO(end)
+  const p = periodAt(start)
+  const a = fromISO(p.start)
+  const b = fromISO(addDays(p.start, p.days - 1))
   const sameMonth = a.getMonth() === b.getMonth()
-  const fa = a.toLocaleDateString('fr-FR', sameMonth ? { day: 'numeric' } : { day: 'numeric', month: 'short' })
-  const fb = b.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
-  return `${fa} – ${fb}`
+  const withDay = p.days !== 7 || p.custom
+  const fa = a.toLocaleDateString('fr-FR', { ...(withDay ? { weekday: 'short' as const } : {}), day: 'numeric', ...(sameMonth ? {} : { month: 'short' as const }) })
+  const fb = b.toLocaleDateString('fr-FR', { ...(withDay ? { weekday: 'short' as const } : {}), day: 'numeric', month: 'short' })
+  return p.days === 1 ? fb : `${fa} – ${fb}`
 }
+/** « Cette semaine », « Période suivante »… (« semaine » pour 7 jours, « période » sinon) */
 export function relativeWeek(start: string) {
-  const diff = Math.round((fromISO(start).getTime() - fromISO(weekStartOf(todayISO())).getTime()) / (7 * 86400000))
-  if (diff === 0) return 'Cette semaine'
-  if (diff === 1) return 'Semaine prochaine'
-  if (diff === -1) return 'Semaine dernière'
-  return diff > 0 ? `Dans ${diff} semaines` : `Il y a ${-diff} semaines`
+  const p = periodAt(start)
+  const noun = p.days === 7 && !p.custom ? 'semaine' : 'période'
+  const cur = weekStartOf(todayISO())
+  if (p.start === cur) return noun === 'semaine' ? 'Cette semaine' : 'Cette période'
+  if (p.start === nextPeriodStart(cur)) return noun === 'semaine' ? 'Semaine prochaine' : 'Période suivante'
+  if (p.start === prevPeriodStart(cur)) return noun === 'semaine' ? 'Semaine dernière' : 'Période précédente'
+  const diff = Math.round((fromISO(p.start).getTime() - fromISO(cur).getTime()) / (7 * 86400000))
+  return diff > 0 ? `Dans ${diff} semaine${diff > 1 ? 's' : ''}` : `Il y a ${-diff} semaine${diff < -1 ? 's' : ''}`
+}
+
+/** Période personnalisée (début + nombre de jours) ; menus et courses sont regroupés. */
+export async function setCustomPeriod(householdId: string, start: string, days: number) {
+  const { error } = await supabase.rpc('set_period', { p_household: householdId, p_start: start, p_days: days })
+  if (error) throw error
+}
+/** Revient à la découpe par semaine pour la période contenant cette date. */
+export async function clearCustomPeriod(householdId: string, day: string) {
+  const { error } = await supabase.rpc('clear_period', { p_household: householdId, p_day: day })
+  if (error) throw error
+}
+export async function listStoredPeriods(householdId: string): Promise<StoredPeriod[]> {
+  const { data, error } = await supabase.from('periods').select('start, days').eq('household_id', householdId).order('start')
+  if (error) throw error
+  return data as StoredPeriod[]
 }
 
 // ------------------------------------------------------------------ données
@@ -256,7 +287,7 @@ export function proposeWeek(opts: {
     if (leftovers && slot.meal === 'soir' && recipe && !recipe.yield_unit && meals.includes('midi')) {
       const next = nextSlot(slot.day, 'soir')
       const nk = `${next.day}|${next.meal}`
-      if (next.day < addDays(start, 7) && !taken.has(nk)) {
+      if (next.day < nextPeriodStart(start) && !taken.has(nk)) {
         reserved.add(nk)
         proposals.push({ ...next, leftoverOf: proposals.length - 1 })
       }
@@ -344,7 +375,8 @@ export async function copyWeek(householdId: string, from: PastWeek, to: string, 
   const ordered = [...from.items].sort((a, b) => Number(!!a.leftover_of) - Number(!!b.leftover_of))
   for (const it of ordered) {
     const day = it.day ? addDays(it.day, offset) : null
-    if (day && (day < today || taken.has(`${day}|${it.meal}`))) continue
+    // Jours hors de la période cible (période plus courte), passés ou déjà remplis : ignorés
+    if (day && (day < today || day >= nextPeriodStart(to) || taken.has(`${day}|${it.meal}`))) continue
     if (it.leftover_of && !ids.has(it.leftover_of)) continue
     if (!day && it.recipe_id && existing.some((e) => e.recipe_id === it.recipe_id)) continue
     const id = crypto.randomUUID()

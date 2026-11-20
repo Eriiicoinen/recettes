@@ -1,7 +1,8 @@
 import type { Session } from '@supabase/supabase-js'
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { clearCaches, clearQueue } from './offline'
-import { setWeekStartDow } from './week'
+import { listStoredPeriods, setStoredPeriods, setWeekStartDow } from './week'
+import type { StoredPeriod } from '../../../supabase/functions/_shared/period.ts'
 import { supabase, type Household, type Member } from './supabase'
 
 type Ctx = {
@@ -39,17 +40,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (error) {
       // Hors ligne (au magasin) : on reprend le foyer mémorisé plutôt que d'afficher l'écran d'accueil
       try {
-        const cached = JSON.parse(localStorage.getItem(cacheKey) ?? 'null') as { me: Member; household: Household } | null
-        if (cached) { setWeekStartDow(cached.household.week_start_dow); setMe(cached.me); setHousehold(cached.household) }
+        const cached = JSON.parse(localStorage.getItem(cacheKey) ?? 'null') as { me: Member; household: Household; periods?: StoredPeriod[] } | null
+        if (cached) {
+          setWeekStartDow(cached.household.week_start_dow)
+          setStoredPeriods(cached.periods ?? [])
+          setMe(cached.me)
+          setHousehold(cached.household)
+        }
       } catch { /* pas de cache */ }
       return
     }
     if (m) {
       const { households, ...member } = m as unknown as Member & { households: Household }
+      const periods = await listStoredPeriods(households.id).catch(() => [])
       setWeekStartDow(households.week_start_dow)
+      setStoredPeriods(periods)
       setMe(member)
-      setHousehold(households)
-      try { localStorage.setItem(cacheKey, JSON.stringify({ me: member, household: households })) } catch { /* stockage plein ou bloqué */ }
+      // Nouvel objet : les écrans recalculent leurs périodes même si le foyer n'a pas changé
+      setHousehold({ ...households })
+      try { localStorage.setItem(cacheKey, JSON.stringify({ me: member, household: households, periods })) } catch { /* stockage plein ou bloqué */ }
     } else {
       setMe(null)
       setHousehold(null)
@@ -70,6 +79,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     })
     return () => sub.subscription.unsubscribe()
   }, [reloadHousehold])
+
+  // Période modifiée sur l'autre téléphone (ou début de semaine) : nouvelle découpe
+  useEffect(() => {
+    if (!household?.id) return
+    const ch = supabase.channel(`periods-${household.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'periods', filter: `household_id=eq.${household.id}` }, () => void reloadHousehold())
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'periods' }, () => void reloadHousehold())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'households', filter: `id=eq.${household.id}` }, () => void reloadHousehold())
+      .subscribe()
+    return () => { void supabase.removeChannel(ch) }
+  }, [household?.id, reloadHousehold])
 
   return (
     <SessionContext.Provider value={{ session, household, me, loading, reloadHousehold }}>

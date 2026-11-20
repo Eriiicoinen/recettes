@@ -1,11 +1,11 @@
-import { ChevronLeft, ChevronRight, Plus, Sparkles } from 'lucide-react'
+import { CalendarRange, ChevronLeft, ChevronRight, Plus, Sparkles } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import CopyWeekSheet from '../components/week/CopyWeekSheet'
 import FillSheet from '../components/week/FillSheet'
 import ItemSheet from '../components/week/ItemSheet'
 import PlanSheet from '../components/week/PlanSheet'
-import WeekStartSelect from '../components/WeekStartSelect'
+import PeriodSheet from '../components/week/PeriodSheet'
 import RecipePicker from '../components/week/RecipePicker'
 import { useDragMeal, type DropKey } from '../components/week/useDragMeal'
 import { listRecipes, listStats, type Recipe, type RecipeStats } from '../lib/recipes'
@@ -13,8 +13,9 @@ import { useRealtime } from '../lib/realtime'
 import { useSession } from '../lib/session'
 import { supabase, type Member } from '../lib/supabase'
 import {
-  addDays, addToWeek, applyProposals, copyWeek, dayLabel, defaultServings, fromISO, lastCookedMap, listWeek, makeLeftovers,
-  MEALS, weekStartOf, relativeWeek, removeLeftovers, removeWeekItem, todayISO, updateWeekItem, weekDays, weekLabel, type Meal,
+  addToWeek, applyProposals, copyWeek, dayLabel, defaultServings, fromISO, lastCookedMap, listWeek, makeLeftovers,
+  MEALS, nextPeriodStart, periodAt, prevPeriodStart, weekStartOf, relativeWeek, removeLeftovers, removeWeekItem, todayISO, updateWeekItem,
+  weekDays, weekLabel, type Meal,
   type WeekItem,
 } from '../lib/week'
 
@@ -28,7 +29,7 @@ function shortDay(iso: string) {
 }
 
 export default function Week() {
-  const { household } = useSession()
+  const { household, reloadHousehold } = useSession()
   const [params, setParams] = useSearchParams()
   const start = weekStartOf(params.get('s') ?? todayISO())
   const today = todayISO()
@@ -41,6 +42,7 @@ export default function Week() {
   const [selected, setSelected] = useState<WeekItem | null>(null)
   const [moving, setMoving] = useState<WeekItem | null>(null)
   const [planning, setPlanning] = useState(false)
+  const [editingPeriod, setEditingPeriod] = useState(false)
   const [filling, setFilling] = useState(false)
   const [copying, setCopying] = useState(false)
   const [flash, setFlash] = useState('')
@@ -77,7 +79,9 @@ export default function Week() {
   const pastDays = days.filter((d) => d < today)
   const nextDays = days.filter((d) => d >= today)
   const planned = new Set((items ?? []).filter((i) => i.day).map((i) => `${i.day}|${i.meal}`)).size
-  const editable = days[6] >= today
+  const editable = days[days.length - 1] >= today
+  const period = periodAt(start)
+  const slotsTotal = days.length * 2
 
   const goWeek = (s: string) => setParams(s === weekStartOf(today) ? {} : { s }, { replace: true })
 
@@ -182,15 +186,19 @@ export default function Week() {
   return (
     <section className="page">
       <div className="week-nav">
-        <button className="btn ghost icon" onClick={() => goWeek(addDays(start, -7))} aria-label="Semaine précédente"><ChevronLeft size={24} /></button>
+        <button className="btn ghost icon" onClick={() => goWeek(prevPeriodStart(start))} aria-label="Période précédente"><ChevronLeft size={24} /></button>
         <div className="week-title">
           <h1>{relativeWeek(start)}</h1>
           <div className="muted small">{weekLabel(start)}</div>
         </div>
-        <button className="btn ghost icon" onClick={() => goWeek(addDays(start, 7))} aria-label="Semaine suivante"><ChevronRight size={24} /></button>
+        <button className="btn ghost icon" onClick={() => goWeek(nextPeriodStart(start))} aria-label="Période suivante"><ChevronRight size={24} /></button>
       </div>
       <div className="row wrap" style={{ justifyContent: 'center', gap: 8 }}>
-        {!moving && <WeekStartSelect compact />}
+        {!moving && (
+          <button className="btn ghost small-btn" onClick={() => setEditingPeriod(true)}>
+            <CalendarRange size={16} /> {period.custom ? `Période de ${period.days} jour${period.days > 1 ? 's' : ''}` : 'Modifier la période'}
+          </button>
+        )}
         {start !== weekStartOf(today) && (
           <button className="btn ghost small-btn" onClick={() => goWeek(weekStartOf(today))}>Revenir à cette semaine</button>
         )}
@@ -204,8 +212,8 @@ export default function Week() {
       ) : items && editable && (
         <div className="week-summary">
           <div>
-            <div className="stat-value">{planned}<span className="muted small"> / 14 repas</span></div>
-            <div className="meter" aria-hidden><span style={{ width: `${Math.min(100, (planned / 14) * 100)}%` }} /></div>
+            <div className="stat-value">{planned}<span className="muted small"> / {slotsTotal} repas</span></div>
+            <div className="meter" aria-hidden><span style={{ width: `${Math.min(100, (planned / slotsTotal) * 100)}%` }} /></div>
           </div>
           <button className="btn primary" onClick={() => setPlanning(true)}><Sparkles size={18} /> Planifier</button>
         </div>
@@ -242,6 +250,12 @@ export default function Week() {
           {!moving && <p className="muted small" style={{ margin: 0, textAlign: 'center' }}>Appui long sur un repas, puis glisse-le vers une autre case.</p>}
           {drag && <div className="drag-ghost" style={{ left: drag.x, top: drag.y }} aria-hidden>{drag.label}</div>}
         </>
+      )}
+
+      {editingPeriod && household && (
+        <PeriodSheet householdId={household.id} start={start}
+          onClose={() => setEditingPeriod(false)}
+          onSaved={(newStart) => { setEditingPeriod(false); goWeek(newStart); void reloadHousehold() }} />
       )}
 
       {planning && household && items && (

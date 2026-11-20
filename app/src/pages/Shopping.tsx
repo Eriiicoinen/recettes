@@ -16,7 +16,7 @@ import {
 import { haptic } from '../lib/haptics'
 import { useRealtime } from '../lib/realtime'
 import { supabase, type Member } from '../lib/supabase'
-import { addDays, weekStartOf, relativeWeek, todayISO, weekLabel } from '../lib/week'
+import { nextPeriodStart, prevPeriodStart, weekStartOf, relativeWeek, todayISO, weekLabel } from '../lib/week'
 
 type Cache = { items: ShoppingItem[]; aisles: Aisle[]; members: Member[]; missing: string[]; ingredients?: Ingredient[]; products?: [string, StoreProduct][] }
 
@@ -332,12 +332,12 @@ export default function Shopping() {
     <section className="page">
       <div className="shop-head">
         <div className="week-nav">
-          <button className="btn ghost icon" onClick={() => goWeek(addDays(week, -7))} aria-label="Semaine précédente"><ChevronLeft size={24} /></button>
+          <button className="btn ghost icon" onClick={() => goWeek(prevPeriodStart(week))} aria-label="Période précédente"><ChevronLeft size={24} /></button>
           <div className="week-title">
             <h1>Courses</h1>
             <div className="muted small">{relativeWeek(week)} · {weekLabel(week)}</div>
           </div>
-          <button className="btn ghost icon" onClick={() => goWeek(addDays(week, 7))} aria-label="Semaine suivante"><ChevronRight size={24} /></button>
+          <button className="btn ghost icon" onClick={() => goWeek(nextPeriodStart(week))} aria-label="Période suivante"><ChevronRight size={24} /></button>
         </div>
         {items && items.length > 0 && (
           <div className="shop-count">

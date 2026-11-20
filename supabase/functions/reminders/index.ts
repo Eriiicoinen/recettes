@@ -3,6 +3,7 @@
 // - Appel d'un utilisateur connecté (bouton « Tester ») : notification de test sur ses propres téléphones.
 import { createClient } from 'npm:@supabase/supabase-js@2.119.2'
 import webpush from 'npm:web-push@3.6.7'
+import { periodOf, type StoredPeriod } from '../_shared/period.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -41,8 +42,12 @@ Deno.serve(async (req) => {
     // Appel quotidien : seuls les foyers dont la semaine commence demain sont prévenus (la veille au soir)
     const next = tomorrow()
     payloadFor = async (householdId) => {
-      const { data: hh } = await admin.from('households').select('week_start_dow').eq('id', householdId).single()
-      if ((hh?.week_start_dow ?? 1) !== next.dow) return null
+      // Prévenir seulement si une période (semaine ou période personnalisée) commence demain
+      const [{ data: hh }, { data: periods }] = await Promise.all([
+        admin.from('households').select('week_start_dow').eq('id', householdId).single(),
+        admin.from('periods').select('start, days').eq('household_id', householdId),
+      ])
+      if (periodOf(next.iso, hh?.week_start_dow ?? 1, (periods ?? []) as StoredPeriod[]).start !== next.iso) return null
       const { count } = await admin.from('week_items').select('id', { count: 'exact', head: true })
         .eq('household_id', householdId).eq('week_start', next.iso)
       const url = `#/semaine?s=${next.iso}`
