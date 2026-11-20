@@ -1,11 +1,12 @@
 import { ChevronLeft, ChevronRight, Plus, Sparkles } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import CopyWeekSheet from '../components/week/CopyWeekSheet'
 import FillSheet from '../components/week/FillSheet'
 import ItemSheet from '../components/week/ItemSheet'
 import PlanSheet from '../components/week/PlanSheet'
 import RecipePicker from '../components/week/RecipePicker'
+import { useDragMeal, type DropKey } from '../components/week/useDragMeal'
 import { listRecipes, listStats, type Recipe, type RecipeStats } from '../lib/recipes'
 import { useRealtime } from '../lib/realtime'
 import { useSession } from '../lib/session'
@@ -123,34 +124,25 @@ export default function Week() {
     if (t !== 'basket') await act(() => updateWeekItem(item.id, t))
   }
 
-  // Appui long sur un repas : mode déplacement (un appui simple ouvre ses actions)
-  const press = useRef<{ timer?: ReturnType<typeof setTimeout>; fired: boolean }>({ fired: false })
-  const pressHandlers = (i: WeekItem) => ({
-    onPointerDown: () => {
-      press.current.fired = false
-      clearTimeout(press.current.timer)
-      press.current.timer = setTimeout(() => {
-        press.current.fired = true
-        navigator.vibrate?.(15)
-        setMoving(i)
-      }, 450)
-    },
-    onPointerUp: () => clearTimeout(press.current.timer),
-    onPointerLeave: () => clearTimeout(press.current.timer),
-    onPointerCancel: () => clearTimeout(press.current.timer),
-    onContextMenu: (e: MouseEvent) => e.preventDefault(),
-    onClick: () => {
-      if (press.current.fired) { press.current.fired = false; return }
-      if (!moving) setSelected(i)
-    },
-  })
+  // Glisser-déposer : appui long sur un repas, glisser, relâcher sur une case (ou dans « À placer »)
+  const dropMeal = (item: WeekItem, key: DropKey) => {
+    if (key === 'basket') {
+      if (item.day) void act(() => updateWeekItem(item.id, { day: null, meal: null }))
+      return
+    }
+    const [day, meal] = key.split('|') as [string, Meal]
+    if (item.day === day && item.meal === meal) return
+    void act(() => updateWeekItem(item.id, { day, meal }))
+  }
+  const { drag, handlers } = useDragMeal(dropMeal)
 
   // Fonction de rendu (pas un composant) : sinon chaque rendu démonte et recrée les puces
   const chip = (i: WeekItem) => {
     const r = i.recipe_id ? recipes.get(i.recipe_id) : undefined
     return (
-      <button key={i.id} className={`wchip${moving?.id === i.id ? ' moving' : ''}${r ? '' : ' free'}`} disabled={!!moving && moving.id !== i.id}
-        {...pressHandlers(i)}>
+      <button key={i.id} className={`wchip${moving?.id === i.id ? ' moving' : ''}${drag?.item.id === i.id ? ' dragging' : ''}${r ? '' : ' free'}`}
+        disabled={!!moving && moving.id !== i.id}
+        {...handlers(i, itemName(i), () => { if (!moving) setSelected(i) })}>
         <span className="wchip-text">{itemName(i)}</span>
         {i.cook_id && members.length > 1 && <span className="cook-badge" title="Qui cuisine">{members.find((x) => x.user_id === i.cook_id)?.display_name.charAt(0).toUpperCase()}</span>}
       </button>
@@ -161,7 +153,7 @@ export default function Week() {
     const list = slot(day, meal)
     const label = `${meal === 'midi' ? 'Midi' : 'Soir'} du ${dayLabel(day)}`
     return (
-      <div className="wcell" key={meal}>
+      <div className={drag?.over === `${day}|${meal}` ? 'wcell drop-over' : 'wcell'} key={meal} data-drop={`${day}|${meal}`}>
         {list.map(chip)}
         {moving ? (
           !(moving.day === day && moving.meal === meal) && (
@@ -220,8 +212,8 @@ export default function Week() {
 
       {items === null ? <p className="muted">Chargement…</p> : (
         <>
-          {(basket.length > 0 || (moving && moving.day)) && (
-            <div className="card stack unplaced">
+          {(basket.length > 0 || moving?.day || drag?.item.day) && (
+            <div className={drag?.over === 'basket' ? 'card stack unplaced drop-over' : 'card stack unplaced'} data-drop="basket">
               <div className="row between">
                 <h2>À placer <span className="muted small">{basket.length || ''}</span></h2>
                 {moving?.day && <button className="btn small-btn primary" onClick={() => dropTo('basket')}>Mettre ici</button>}
@@ -243,7 +235,8 @@ export default function Week() {
             )}
             {(pastDays.length === 7 ? days : nextDays).map(row)}
           </div>
-          {!moving && <p className="muted small" style={{ margin: 0, textAlign: 'center' }}>Appui long sur un repas pour le déplacer.</p>}
+          {!moving && <p className="muted small" style={{ margin: 0, textAlign: 'center' }}>Appui long sur un repas, puis glisse-le vers une autre case.</p>}
+          {drag && <div className="drag-ghost" style={{ left: drag.x, top: drag.y }} aria-hidden>{drag.label}</div>}
         </>
       )}
 
