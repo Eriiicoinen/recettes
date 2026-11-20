@@ -554,3 +554,7 @@ h2.inline-icon, .inline-icon { display: inline-flex; align-items: center; gap: 8
   max-width: 180px; padding: 8px 12px; border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-lg);
   font-size: .88rem; font-weight: 600; line-height: 1.2; outline: 2px solid var(--accent);
 }
+.wchip:active { transform: scale(.96); transition: transform .3s ease; }
+.drag-ghost { animation: lift .18s ease-out; }
+@keyframes lift { from { transform: translate(-50%, -60%) scale(.9); opacity: .4; } }
+@media (prefers-reduced-motion: reduce) { .drag-ghost { animation: none; } .wchip:active { transform: none; } }

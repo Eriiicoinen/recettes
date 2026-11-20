@@ -13,6 +13,7 @@ import { useSession } from '../lib/session'
 import {
   addRecurring, formatAmount, packAmount, listItems, listRecurring, listText, removeRecurring, syncList, type RecurringItem, type ShoppingItem,
 } from '../lib/shopping'
+import { haptic } from '../lib/haptics'
 import { useRealtime } from '../lib/realtime'
 import { supabase, type Member } from '../lib/supabase'
 import { addDays, mondayOf, relativeWeek, todayISO, weekLabel } from '../lib/week'
@@ -165,7 +166,7 @@ export default function Shopping() {
     patchLocal(i.id, patch)
     void safe(() => run({ kind: 'update', table: 'shopping_items', id: i.id, patch }))
     if (!i.checked) {
-      navigator.vibrate?.(10)
+      haptic(10)
       if (withUndo) showToast(`${i.label} : dans le chariot`, () => toggle({ ...i, ...patch }, false))
     }
   }

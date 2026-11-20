@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent as RMouseEvent, type PointerEvent as RPointerEvent } from 'react'
+import { haptic } from '../../lib/haptics'
 import type { WeekItem } from '../../lib/week'
 
 /** Cible de dépôt : « basket » (à placer) ou « AAAA-MM-JJ|midi ». Les cases portent l'attribut data-drop. */
@@ -85,7 +86,7 @@ export function useDragMeal(onDrop: (item: WeekItem, target: DropKey) => void) {
         s.timer = undefined
         s.active = true
         s.fired = true
-        navigator.vibrate?.(15)
+        haptic(15)
         setDrag({ item, label, x: s.x, y: s.y, over: null })
         cancelAnimationFrame(s.raf)
         // Défilement automatique quand le doigt approche du haut ou du bas de l'écran
