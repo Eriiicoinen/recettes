@@ -537,3 +537,11 @@ h2.inline-icon, .inline-icon { display: inline-flex; align-items: center; gap: 8
 }
 .wchip:has(.cook-badge) .wchip-text { padding-right: 16px; }
 .cook-line { color: var(--herb); font-weight: 600; }
+
+/* ---------- mode drive ---------- */
+.drive-link { color: var(--muted); }
+.drive-link.known { color: var(--herb); }
+.drive-hint { margin: 0; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--herb-soft); line-height: 1.5; }
+.drive-hint svg { vertical-align: -2px; }
+.drive-product { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--herb-soft); }
+.drive-product a { color: var(--herb); font-weight: 600; min-width: 0; overflow-wrap: anywhere; }

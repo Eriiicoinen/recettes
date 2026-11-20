@@ -1,8 +1,10 @@
-import { Check, ChevronLeft, ChevronRight, Ellipsis, House, Plus, Repeat, Share2, Trash2, TriangleAlert } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Ellipsis, ExternalLink, House, Plus, Repeat, Share2, ShoppingBag, Trash2, TriangleAlert } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import Sheet from '../components/Sheet'
+import DriveProductField from '../components/shopping/DriveProductField'
 import PackEditor from '../components/shopping/PackEditor'
+import { forgetStoreProduct, itemKey, listStoreProducts, saveStoreProduct, searchUrl, STORE_NAME, type StoreProduct } from '../lib/drive'
 import RecurringSheet from '../components/shopping/RecurringSheet'
 import { guessAisle } from '../lib/aisleGuess'
 import { cacheGet, cacheSet, flush, onQueueChange, run } from '../lib/offline'
@@ -15,7 +17,7 @@ import { useRealtime } from '../lib/realtime'
 import { supabase, type Member } from '../lib/supabase'
 import { addDays, mondayOf, relativeWeek, todayISO, weekLabel } from '../lib/week'
 
-type Cache = { items: ShoppingItem[]; aisles: Aisle[]; members: Member[]; missing: string[]; ingredients?: Ingredient[] }
+type Cache = { items: ShoppingItem[]; aisles: Aisle[]; members: Member[]; missing: string[]; ingredients?: Ingredient[]; products?: [string, StoreProduct][] }
 
 export default function Shopping() {
   const { household, me } = useSession()
@@ -34,6 +36,13 @@ export default function Shopping() {
   const [selected, setSelected] = useState<ShoppingItem | null>(null)
   const [newLabel, setNewLabel] = useState('')
   const [recurring, setRecurring] = useState<RecurringItem[]>([])
+  const [products, setProducts] = useState<Map<string, StoreProduct>>(new Map())
+  // Mode drive : bouton « ouvrir sur le site du magasin » sur chaque article (choix mémorisé sur ce téléphone)
+  const [drive, setDrive] = useState(() => { try { return localStorage.getItem('recettes.drive') === '1' } catch { return false } })
+  const toggleDrive = () => setDrive((d) => {
+    try { localStorage.setItem('recettes.drive', d ? '0' : '1') } catch { /* indisponible */ }
+    return !d
+  })
   const [showRecurring, setShowRecurring] = useState(false)
   // Message bref en bas d'écran, avec « Annuler » quand l'action peut être défaite
   const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null)
@@ -62,13 +71,14 @@ export default function Shopping() {
     try {
       await flush()
       const miss = withSync ? await syncList(household.id, week, week === thisWeek) : null
-      const [list, a, m, ing, rec] = await Promise.all([
+      const [list, a, m, ing, rec, prod] = await Promise.all([
         listItems(household.id, week),
         listAisles(household.id),
         supabase.from('household_members').select('household_id, user_id, display_name').eq('household_id', household.id)
           .then(({ data }) => (data ?? []) as Member[]),
         listIngredients(household.id),
         listRecurring(household.id),
+        listStoreProducts(household.id).catch(() => new Map<string, StoreProduct>()),
       ])
       if (n !== loadSeq.current) return
       setItems(list)
@@ -76,9 +86,10 @@ export default function Shopping() {
       setMembers(m)
       setIngredients(ing)
       setRecurring(rec)
+      setProducts(prod)
       if (miss) setMissing(miss)
       setError('')
-      persist({ items: list, aisles: a, members: m, ingredients: ing, ...(miss ? { missing: miss } : {}) })
+      persist({ items: list, aisles: a, members: m, ingredients: ing, products: [...prod], ...(miss ? { missing: miss } : {}) })
     } catch (e) {
       if (n !== loadSeq.current) return
       const cached = cacheGet<Cache>(cacheKey)
@@ -88,6 +99,7 @@ export default function Shopping() {
         setMembers(cached.members)
         setMissing(cached.missing)
         setIngredients(cached.ingredients ?? [])
+        setProducts(new Map(cached.products ?? []))
       } else if (!cached && itemsRef.current === null) {
         setItems([])
       }
@@ -103,6 +115,7 @@ export default function Shopping() {
     setMembers(cached?.members ?? [])
     setMissing(cached?.missing ?? [])
     setIngredients(cached?.ingredients ?? [])
+    setProducts(new Map(cached?.products ?? []))
     void load(true)
     const b = burst.current
     return () => { clearTimeout(b.timer) }
@@ -113,10 +126,10 @@ export default function Shopping() {
   const burst = useRef<{ timer?: ReturnType<typeof setTimeout>; sync: boolean }>({ sync: false })
   const filter = `household_id=eq.${household?.id}`
   useRealtime(household && `shopping-${week}`, [
-    { table: 'week_items', filter }, { table: 'shopping_items', filter }, { table: 'recurring_items', filter },
+    { table: 'week_items', filter }, { table: 'shopping_items', filter }, { table: 'recurring_items', filter }, { table: 'store_products', filter },
   ], (table) => {
     const b = burst.current
-    b.sync ||= table !== 'shopping_items'
+    b.sync ||= table !== 'shopping_items' && table !== 'store_products'
     clearTimeout(b.timer)
     b.timer = setTimeout(() => { const s = b.sync; b.sync = false; void load(s) }, 300)
   })
@@ -301,6 +314,15 @@ export default function Shopping() {
           {i.checked && i.checked_by && i.checked_by !== me?.user_id && <span className="muted small"> · {memberName(i.checked_by)}</span>}
         </span>
       </button>
+      {drive && !i.checked && (() => {
+        const known = products.get(itemKey(i.label))
+        return (
+          <a className={known ? 'btn ghost icon drive-link known' : 'btn ghost icon drive-link'} href={known?.url ?? searchUrl(i.label)}
+            target="_blank" rel="noreferrer" aria-label={known ? `Ouvrir le produit habituel : ${i.label}` : `Chercher ${i.label} sur ${STORE_NAME}`}>
+            <ExternalLink size={19} />
+          </a>
+        )
+      })()}
       <button className="btn ghost icon shop-more" onClick={() => setSelected(i)} aria-label={`Options pour ${i.label}`}><Ellipsis size={20} /></button>
     </li>
   )
@@ -319,10 +341,20 @@ export default function Shopping() {
         {items && items.length > 0 && (
           <div className="shop-count">
             <span><strong>{remaining}</strong> à acheter{done.length ? <span className="muted"> · {done.length} dans le chariot</span> : null}</span>
-            {remaining > 0 && <button className="btn ghost small-btn" onClick={shareList}><Share2 size={16} /> Partager</button>}
+            <div className="row" style={{ gap: 2 }}>
+              <button className={drive ? 'chip on inline-icon' : 'chip inline-icon'} aria-pressed={drive} onClick={toggleDrive}><ShoppingBag size={15} /> Drive</button>
+              {remaining > 0 && <button className="btn ghost icon" onClick={shareList} aria-label="Partager la liste"><Share2 size={18} /></button>}
+            </div>
           </div>
         )}
       </div>
+
+      {drive && remaining > 0 && (
+        <p className="drive-hint small">
+          <strong>Mode drive :</strong> touche <ExternalLink size={13} /> pour ouvrir l'article sur {STORE_NAME}, ajoute-le au panier, reviens et coche-le.
+          Les produits en vert s'ouvrent directement sur ton produit habituel (à retenir dans ⋯).
+        </p>
+      )}
 
       {(!online || pending > 0) && (
         <div className="offline-banner" role="status">
@@ -435,6 +467,17 @@ export default function Shopping() {
             )}
 
             <div className="sheet-section">Toujours <span className="muted small">(retenu pour les prochaines listes)</span></div>
+            {household && (
+              <DriveProductField key={selected.id} label={selected.label} product={products.get(itemKey(selected.label))}
+                onSave={async (url, title) => {
+                  await saveStoreProduct(household.id, selected.label, url, title)
+                  setProducts((m) => new Map(m).set(itemKey(selected.label), { item_key: itemKey(selected.label), url, title }))
+                }}
+                onForget={async () => {
+                  await forgetStoreProduct(household.id, selected.label)
+                  setProducts((m) => { const n = new Map(m); n.delete(itemKey(selected.label)); return n })
+                }} />
+            )}
             <label className="field">
               <span>Rayon</span>
               <select value={selected.aisle_id ?? ''} onChange={(e) => void setAisle(selected, e.target.value || null)}>
