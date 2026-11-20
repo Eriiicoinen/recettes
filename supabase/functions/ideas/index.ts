@@ -4,6 +4,7 @@ import Anthropic from 'npm:@anthropic-ai/sdk@1.10.0'
 import { zodOutputFormat } from 'npm:@anthropic-ai/sdk@1.10.0/helpers/zod'
 import { createClient } from 'npm:@supabase/supabase-js@2.119.2'
 import { z } from 'npm:zod@4.6.7'
+import { MODEL } from '../_shared/models.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -56,7 +57,7 @@ Deno.serve(async (req) => {
   const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') })
   try {
     const response = await anthropic.messages.parse({
-      model: 'claude-opus-5-5',
+      model: MODEL,
       max_tokens: 16000,
       thinking: { type: 'adaptive' },
       output_config: { effort: 'low', format: zodOutputFormat(Ideas) },

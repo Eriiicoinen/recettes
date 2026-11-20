@@ -6,6 +6,7 @@ import Anthropic from 'npm:@anthropic-ai/sdk@1.10.0'
 import { zodOutputFormat } from 'npm:@anthropic-ai/sdk@1.10.0/helpers/zod'
 import { createClient } from 'npm:@supabase/supabase-js@2.119.2'
 import { z } from 'npm:zod@4.6.7'
+import { FETCH_MODEL, MODEL } from '../_shared/models.ts'
 import { extractFromHtml, isBotChallenge } from './extract.ts'
 
 const CATEGORIES = ['Entrée', 'Plat', 'Accompagnement', 'Soupe', 'Salade', 'Dessert', 'Autre'] as const
@@ -121,7 +122,7 @@ async function fetchViaClaude(anthropic: Anthropic, url: string): Promise<string
   }]
   for (let i = 0; i < 4; i++) {
     const response = await anthropic.messages.create({
-      model: 'claude-opus-5-5',
+      model: FETCH_MODEL,
       max_tokens: 16000,
       thinking: { type: 'adaptive' },
       output_config: { effort: 'low' },
@@ -229,7 +230,7 @@ Demande d'adaptation : ${adapt.request}`
     }))
 
     const response = await anthropic.messages.parse({
-      model: 'claude-opus-5-5',
+      model: MODEL,
       max_tokens: 16000,
       thinking: { type: 'adaptive' },
       output_config: { effort: 'low', format: zodOutputFormat(schemaFor(aisleNames)) },
