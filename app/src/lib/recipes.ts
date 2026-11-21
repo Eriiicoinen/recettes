@@ -265,6 +265,37 @@ export function formatQty(n: number | null): string {
   return String(r).replace('.', ',')
 }
 
+/** Arrondi « de cuisine » d'une quantité recalculée : 66,7 g → 65 g, 2,67 œufs → 2½, 1,33 c. à s. → 1½. */
+export function roundQty(n: number, unit: string | null): number {
+  const u = (unit ?? '').toLowerCase().trim()
+  const step = (s: number) => Math.max(s, Math.round(n / s) * s)
+  if (u === 'g' || u === 'ml') return n < 20 ? step(1) : n < 100 ? step(5) : n < 1000 ? step(10) : step(50)
+  if (u === 'mg') return step(1)
+  if (u === 'cl' || u === 'dl') return n < 10 ? step(0.5) : step(1)
+  if (u === 'kg' || u === 'l') return step(0.05)
+  if (n < 1) return step(0.25)
+  return step(0.5)
+}
+
+/** Quantité affichée pour un facteur de parts : exacte si facteur 1, arrondie sinon. */
+export function scaledQty(q: number | null, unit: string | null, factor: number): string {
+  if (q == null) return ''
+  return formatQty(factor === 1 ? q : roundQty(q * factor, unit))
+}
+
+// « 80 g », « 1,5 kg », « 20 cl », « 2 c. à s. », « 3 cuillères à soupe »… (pas les °C, minutes, cm)
+const QTY_IN_TEXT = /(\d+(?:[.,]\d+)?)(\s?)(kg|mg|g|cl|dl|ml|l|litres?|c\.\s?à\s?s\.?|c\.\s?à\s?c\.?|cuill[eè]res?\s+à\s+(?:soupe|café))(?![\p{L}\d])/giu
+
+/** Recalcule les quantités écrites dans un texte (étape, précision d'ingrédient). */
+export function scaleText(text: string, factor: number): string {
+  if (factor === 1 || !text) return text
+  return text.replace(QTY_IN_TEXT, (_m, num: string, sp: string, unit: string) => {
+    const q = Number(num.replace(',', '.'))
+    const norm = unit.toLowerCase().startsWith('litre') ? 'l' : unit
+    return `${formatQty(roundQty(q * factor, norm))}${sp}${unit}`
+  })
+}
+
 /** 4, null → « 4 pers. » ; 20, « cookies » → « 20 cookies » */
 export function yieldLabel(n: number, unit: string | null) {
   return unit ? `${n} ${unit}` : `${n} pers.`
@@ -297,11 +328,11 @@ export function recipeText(recipe: Recipe, lines: RecipeLine[], servings: number
   if (lines.length) {
     out.push('', recipe.is_simple ? 'À acheter :' : 'Ingrédients :')
     for (const l of lines) {
-      const q = [formatQty(l.quantity == null ? null : l.quantity * f), l.unit].filter(Boolean).join(' ')
-      out.push(`- ${q ? `${q} ` : ''}${l.name}${l.note ? `, ${l.note}` : ''}`)
+      const q = [scaledQty(l.quantity, l.unit, f), l.unit].filter(Boolean).join(' ')
+      out.push(`- ${q ? `${q} ` : ''}${l.name}${l.note ? `, ${scaleText(l.note, f)}` : ''}`)
     }
   }
-  if (recipe.steps.length) out.push('', 'Étapes :', ...recipe.steps.map((st, i) => `${i + 1}. ${st}`))
+  if (recipe.steps.length) out.push('', 'Étapes :', ...recipe.steps.map((st, i) => `${i + 1}. ${scaleText(st, f)}`))
   if (recipe.notes) out.push('', recipe.notes)
   if (recipe.source_url) out.push('', `Source : ${recipe.source_url}`)
   return out.join('\n')

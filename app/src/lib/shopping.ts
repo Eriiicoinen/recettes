@@ -37,6 +37,8 @@ export async function listItems(householdId: string, week: string): Promise<Shop
 /** Quantités stockées en g et ml : 1500 g → « 1,5 kg », 250 ml → « 25 cl » */
 export function formatAmount(q: number | null, unit: string | null): string {
   if (q == null) return ''
+  // Pour acheter, on arrondit au-dessus : 66,7 g → 70 g
+  if ((unit === 'g' || unit === 'ml') && q < 1000) q = q < 20 ? Math.ceil(q) : Math.ceil(q / 5 - 1e-9) * 5
   if (unit === 'g') return q >= 1000 ? `${formatQty(q / 1000)} kg` : `${formatQty(q)} g`
   if (unit === 'ml') {
     if (q >= 1000) return `${formatQty(q / 1000)} l`

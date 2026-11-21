@@ -3,7 +3,7 @@ import AdaptSheet from '../components/AdaptSheet'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
-  deleteRecipe, formatDuration, formatQty, getRecipe, listStats, recipeText, relativeDate, setFavorite, yieldLabel,
+  deleteRecipe, formatDuration, getRecipe, scaledQty, scaleText, listStats, recipeText, relativeDate, setFavorite, yieldLabel,
   type Recipe, type RecipeLine, type RecipeStats,
 } from '../lib/recipes'
 import { useRealtime } from '../lib/realtime'
@@ -222,9 +222,9 @@ export default function RecipeDetail() {
                 <label className={doneIng.has(i) ? 'done' : ''}>
                   <input type="checkbox" checked={doneIng.has(i)} onChange={() => toggle(doneIng, i, setDoneIng)} />
                   <span>
-                    <strong>{[formatQty(l.quantity == null ? null : l.quantity * factor), l.unit].filter(Boolean).join(' ')}</strong>
+                    <strong>{[scaledQty(l.quantity, l.unit, factor), l.unit].filter(Boolean).join(' ')}</strong>
                     {l.quantity != null || l.unit ? ' ' : ''}{l.name}
-                    {l.note && <span className="muted">, {l.note}</span>}
+                    {l.note && <span className="muted">, {scaleText(l.note, factor)}</span>}
                   </span>
                 </label>
               </li>
@@ -236,12 +236,17 @@ export default function RecipeDetail() {
       {recipe.steps.length > 0 && (
         <div className="card stack">
           <h2>Étapes</h2>
+          {factor !== 1 && (
+            <p className="muted small" style={{ margin: 0 }}>
+              Quantités des étapes recalculées pour {yieldLabel(servings, recipe.yield_unit)} (recette prévue pour {yieldLabel(recipe.servings, recipe.yield_unit)}).
+            </p>
+          )}
           <ol className="steps">
             {recipe.steps.map((s, i) => (
               <li key={i} className={doneStep.has(i) ? 'done' : ''} onClick={() => toggle(doneStep, i, setDoneStep)}>
                 <span className="step-num">{i + 1}</span>
                 <span>
-                  {s}
+                  {scaleText(s, factor)}
                   {findDurations(s).map((d) => (
                     <button key={d.seconds} className="timer-chip" aria-label={`Minuteur ${d.label}`}
                       onClick={(e) => { e.stopPropagation(); setCooking(true); startTimer(`Étape ${i + 1} · ${d.label}`, d.seconds) }}>
