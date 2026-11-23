@@ -27,8 +27,22 @@ export type Recipe = {
   source_kind: string
   source_url: string | null
   photo_url: string | null
+  /** « Qu'est-ce qu'on boit ? » : accords proposés par Claude */
+  drinks: Drink[]
   created_at: string
   updated_at: string
+}
+
+export type Drink = { name: string; style: 'rouge' | 'blanc' | 'rosé' | 'bulles' | 'doux' | 'autre'; why: string }
+
+/** Demande à Claude des vins pour une recette ; ils sont enregistrés dans la recette. */
+export async function suggestDrinks(recipeId: string): Promise<Drink[]> {
+  const { data, error } = await supabase.functions.invoke('drinks', { body: { recipe_id: recipeId } })
+  if (error) {
+    const payload = 'context' in error ? await (error.context as Response).json().catch(() => null) : null
+    throw new Error(payload?.error ?? 'Suggestion impossible : vérifie ta connexion.')
+  }
+  return data.drinks as Drink[]
 }
 
 export type Ingredient = {
@@ -61,7 +75,7 @@ export type RecipeDraft = Omit<Recipe, 'id' | 'household_id' | 'created_at' | 'u
 
 export const emptyDraft = (): RecipeDraft => ({
   name: '', category: 'Plat', seasons: [], rating: null, servings: 4, yield_unit: null, prep_minutes: null, cook_minutes: null,
-  steps: [], notes: null, tags: [], is_favorite: false, is_simple: false, source_kind: 'manual', source_url: null, photo_url: null,
+  steps: [], notes: null, tags: [], is_favorite: false, is_simple: false, source_kind: 'manual', source_url: null, photo_url: null, drinks: [],
   lines: [],
 })
 
@@ -199,6 +213,8 @@ export async function saveRecipe(householdId: string, userId: string, draft: Rec
     tags: fields.tags.map((t) => t.trim()).filter(Boolean),
     notes: fields.notes?.trim() || null,
     source_url: fields.source_url?.trim() || null,
+    // Seulement si présents : une copie hors ligne ancienne n'efface pas les accords enregistrés
+    ...(fields.drinks?.length ? { drinks: fields.drinks } : {}),
   }
 
   let recipeId = id
@@ -334,6 +350,7 @@ export function recipeText(recipe: Recipe, lines: RecipeLine[], servings: number
   }
   if (recipe.steps.length) out.push('', 'Étapes :', ...recipe.steps.map((st, i) => `${i + 1}. ${scaleText(st, f)}`))
   if (recipe.notes) out.push('', recipe.notes)
+  if (recipe.drinks?.length) out.push('', 'À boire :', ...recipe.drinks.map((d) => `- ${d.name} (${d.style})`))
   if (recipe.source_url) out.push('', `Source : ${recipe.source_url}`)
   return out.join('\n')
 }

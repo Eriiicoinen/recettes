@@ -562,3 +562,13 @@ h2.inline-icon, .inline-icon { display: inline-flex; align-items: center; gap: 8
 .week-start select { min-height: 40px; }
 .week-start.compact select.chip { min-height: 32px; padding: 0 26px 0 10px; }
 .period-preview { margin: 0; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--accent-soft); }
+
+/* Qu'est-ce qu'on boit ? */
+.drinks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.drinks li { display: flex; gap: 10px; align-items: flex-start; line-height: 1.35; }
+.drink-dot { flex: none; width: 12px; height: 12px; border-radius: 50%; margin-top: 5px; background: var(--muted); border: 1px solid rgba(0,0,0,.15); }
+.drink-dot.rouge { background: #7b1e2b; }
+.drink-dot.blanc { background: #e9d98a; }
+.drink-dot.rosé { background: #f0a3a0; }
+.drink-dot.bulles { background: #f3e7b5; box-shadow: inset 0 0 0 2px #fff8; }
+.drink-dot.doux { background: #d99a2b; }

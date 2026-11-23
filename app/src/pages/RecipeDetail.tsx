@@ -1,9 +1,9 @@
-import { AlarmClock, ArrowLeft, CalendarPlus, Camera, ChefHat, Heart, Pencil, Share2, Sparkles, Timer, X } from 'lucide-react'
+import { AlarmClock, ArrowLeft, CalendarPlus, Camera, ChefHat, Heart, Pencil, Share2, Sparkles, Timer, Wine, X } from 'lucide-react'
 import AdaptSheet from '../components/AdaptSheet'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
-  deleteRecipe, formatDuration, getRecipe, scaledQty, scaleText, listStats, recipeText, relativeDate, setFavorite, yieldLabel,
+  deleteRecipe, formatDuration, getRecipe, scaledQty, scaleText, suggestDrinks, listStats, recipeText, relativeDate, setFavorite, yieldLabel,
   type Recipe, type RecipeLine, type RecipeStats,
 } from '../lib/recipes'
 import { useRealtime } from '../lib/realtime'
@@ -42,6 +42,16 @@ export default function RecipeDetail() {
   const [flash, setFlash] = useState('')
   const [adapting, setAdapting] = useState(false)
   const [photoBusy, setPhotoBusy] = useState(false)
+  const [drinksBusy, setDrinksBusy] = useState(false)
+  const [drinksError, setDrinksError] = useState('')
+
+  async function askDrinks() {
+    if (!recipe) return
+    setDrinksBusy(true)
+    setDrinksError('')
+    try { const drinks = await suggestDrinks(recipe.id); setRecipe((r) => r && { ...r, drinks }) } catch (e) { setDrinksError((e as Error).message) }
+    setDrinksBusy(false)
+  }
 
   function notify(msg: string) {
     setFlash(msg)
@@ -257,6 +267,32 @@ export default function RecipeDetail() {
               </li>
             ))}
           </ol>
+        </div>
+      )}
+
+      {!cooking && (
+        <div className="card stack">
+          <div className="row between">
+            <h2><Wine size={20} style={{ verticalAlign: '-3px' }} /> Qu'est-ce qu'on boit ?</h2>
+            {(recipe.drinks ?? []).length > 0 && (
+              <button className="btn ghost small-btn" disabled={drinksBusy} onClick={askDrinks}>{drinksBusy ? 'Un instant…' : 'Autres idées'}</button>
+            )}
+          </div>
+          {(recipe.drinks ?? []).length > 0 ? (
+            <ul className="drinks">
+              {recipe.drinks.map((d, i) => (
+                <li key={i}>
+                  <span className={`drink-dot ${d.style}`} aria-hidden="true" />
+                  <span><strong>{d.name}</strong> <span className="muted small">{d.style}</span><br /><span className="muted small">{d.why}</span></span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <button className="btn" disabled={drinksBusy} onClick={askDrinks}>
+              <Sparkles size={16} /> {drinksBusy ? 'Claude réfléchit…' : 'Demander des idées de vins'}
+            </button>
+          )}
+          {drinksError && <p className="error" style={{ margin: 0 }}>{drinksError}</p>}
         </div>
       )}
 

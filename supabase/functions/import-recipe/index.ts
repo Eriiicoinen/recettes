@@ -7,6 +7,7 @@ import { zodOutputFormat } from 'npm:@anthropic-ai/sdk@1.10.0/helpers/zod'
 import { createClient } from 'npm:@supabase/supabase-js@2.119.2'
 import { z } from 'npm:zod@4.6.7'
 import { FETCH_MODEL, MODEL } from '../_shared/models.ts'
+import { DRINKS_RULES, drinksSchema } from '../_shared/drinks.ts'
 import { extractFromHtml, isBotChallenge } from './extract.ts'
 
 const CATEGORIES = ['Entrée', 'Plat', 'Accompagnement', 'Soupe', 'Salade', 'Dessert', 'Autre'] as const
@@ -45,6 +46,7 @@ function schemaFor(aisles: string[]) {
     steps: z.array(z.string()).describe('Étapes dans l\'ordre, une phrase ou un paragraphe court chacune, sans numéro'),
     tags: z.array(z.string()).describe('2 à 4 mots-clés en minuscules : végétarien, rapide, batch cooking…'),
     notes: z.string().nullable().describe('Astuces ou variantes utiles présentes dans la source, sinon null'),
+    drinks: drinksSchema,
   })
 }
 
@@ -58,6 +60,7 @@ Règles :
 - Rendement : distingue bien un nombre de personnes d'un nombre de pièces. « Pour 20 cookies », « 12 muffins », « 1 cake », « 6 pots » → servings = ce nombre et yield_unit = « cookies », « muffins », « cake », « pots ». Les données schema.org (recipeYield) indiquent souvent seulement un nombre : vérifie dans le titre, les étapes ou le texte si ce nombre désigne des pièces. yield_unit = null uniquement pour des personnes ou des parts.
 - Photo : lis tout le texte visible, y compris l'écriture manuscrite ; si plusieurs photos, ce sont les pages successives d'une même recette. Ce qui est illisible est omis plutôt qu'inventé.
 - Adaptation demandée : applique la demande à la recette d'origine (remplace les ingrédients concernés, ajuste quantités, temps et étapes) en gardant son esprit. Ajoute la précision au nom entre parenthèses, ex. « Hachis parmentier (végétarien) ». Dans notes, explique en une ou deux phrases ce qui a changé. Si la demande est impossible ou dangereuse, mets is_recipe à false.
+- ${DRINKS_RULES}
 - Si le contenu ne contient pas de recette (page d'erreur, article, accueil), mets is_recipe à false et remplis le reste au mieux avec des valeurs vides.`
 
 const BROWSER_HEADERS = {

@@ -1,5 +1,5 @@
 import { FunctionsHttpError } from '@supabase/supabase-js'
-import type { Aisle, RecipeDraft, RecipeLine } from './recipes'
+import type { Aisle, Drink, RecipeDraft, RecipeLine } from './recipes'
 import { emptyDraft } from './recipes'
 import { blobToBase64, shrinkImage } from './images'
 import { supabase } from './supabase'
@@ -16,6 +16,7 @@ type Imported = {
   steps: string[]
   tags: string[]
   notes: string | null
+  drinks?: Drink[]
 }
 
 /** "https://…" seul → lien ; sinon le premier lien trouvé dans un texte court ; sinon texte de recette. */
@@ -75,6 +76,7 @@ async function callImport(body: object, aisles: Aisle[], kind: 'url' | 'text' | 
       steps: r.steps,
       tags: r.tags,
       notes: r.notes,
+      drinks: r.drinks ?? [],
       source_kind: kind,
       source_url: data.source_url ?? null,
     },
